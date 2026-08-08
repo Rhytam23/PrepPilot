@@ -20,10 +20,10 @@ export function SiteHeader() {
       </Link>
 
       <nav className="hidden items-center gap-6 text-sm text-zinc-400 md:flex">
-        <a className="transition hover:text-white" href="#features">
+        <a className="transition hover:text-white" href="/#features">
           Features
         </a>
-        <a className="transition hover:text-white" href="#how-it-works">
+        <a className="transition hover:text-white" href="/#how-it-works">
           How it works
         </a>
       </nav>

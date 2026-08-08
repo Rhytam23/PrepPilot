@@ -76,13 +76,13 @@ export default function HomePage() {
       <main>
         <section className="relative overflow-hidden px-6 pb-24 pt-20 sm:pb-28 sm:pt-28">
           <div className="absolute inset-x-0 top-0 -z-10 h-[42rem] bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.18),transparent_56%)]" />
-          <div className="animate-glow-drift absolute left-1/2 top-16 -z-10 h-48 w-[34rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-cyan-400/20 via-white/10 to-emerald-300/20 blur-3xl" />
+          <div className="animate-glow-drift absolute left-1/2 top-16 -z-10 h-48 w-[34rem] -translate-x-1/2 rounded-full bg-linear-to-r from-cyan-400/20 via-white/10 to-emerald-300/20 blur-3xl" />
           <div className="mx-auto max-w-5xl text-center">
             <motion.p
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.55, ease: "easeOut" }}
-              className="mx-auto mb-7 w-fit rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-cyan-200 shadow-lg shadow-cyan-950/20"
+              className="mx-auto mb-7 w-fit rounded-full border border-white/10 bg-white/4 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-cyan-200 shadow-lg shadow-cyan-950/20"
             >
               PrepPilot
             </motion.p>
@@ -124,7 +124,7 @@ export default function HomePage() {
                 href="#how-it-works"
                 className={cn(
                   buttonVariants({ variant: "outline", size: "lg" }),
-                  "h-11 w-full border-white/15 bg-white/[0.03] px-5 text-white transition duration-300 hover:-translate-y-0.5 hover:bg-white/10 sm:w-auto"
+                  "h-11 w-full border-white/15 bg-white/3 px-5 text-white transition duration-300 hover:-translate-y-0.5 hover:bg-white/10 sm:w-auto"
                 )}
               >
                 Learn More

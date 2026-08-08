@@ -1,7 +1,20 @@
+"use client"
+
+import { Suspense } from "react"
+import FeedbackDashboard from "@/components/feedback/feedback-dashboard"
+import { Loader2 } from "lucide-react"
+
 export default function FeedbackPage() {
   return (
-    <main className="flex min-h-svh items-center justify-center p-6">
-      <h1 className="text-3xl font-semibold">Feedback</h1>
-    </main>
+    <Suspense fallback={
+      <div className="dark min-h-svh bg-black text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="size-8 animate-spin text-cyan-400" />
+          <p className="text-zinc-400 text-sm">Loading performance report...</p>
+        </div>
+      </div>
+    }>
+      <FeedbackDashboard />
+    </Suspense>
   )
 }
