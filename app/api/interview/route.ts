@@ -243,9 +243,7 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { sessionId } = body
 
-    if (!sessionId) {
-      return NextResponse.json({ error: "Missing sessionId parameter" }, { status: 400 })
-    }
+  
 
     // 1. Initial request (Start Interview)
     if (body.candidate) {

@@ -699,7 +699,7 @@ export default function InterviewConsole() {
                   <>
                     <Button 
                       onClick={triggerAnalysis} 
-                      disabled={evalLogs.length === 0 || isAnalyzing}
+                     disabled={isAnalyzing}
                       variant="outline" 
                       className="w-full border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs"
                     >
