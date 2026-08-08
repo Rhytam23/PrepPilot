@@ -42,6 +42,9 @@ export default function InterviewConsole() {
   const questions = React.useMemo(() => getQuestionsForCandidate(candidate.id), [candidate.id])
 
   // Interview state
+  const sessionId = React.useRef(
+  `session-${candidateId}-${Date.now()}`
+)
   const [currentIdx, setCurrentIdx] = React.useState(0)
   const [currentStep, setCurrentStep] = React.useState<"main" | "followup">("main")
   const [messages, setMessages] = React.useState<Message[]>([])
@@ -56,26 +59,75 @@ export default function InterviewConsole() {
 
   const chatEndRef = React.useRef<HTMLDivElement>(null)
 
-  // Initialize interview
-  React.useEffect(() => {
-    if (questions && questions.length > 0) {
-      setIsTyping(true)
-      const timer = setTimeout(() => {
-        setIsTyping(false)
+// Initialize interview
+React.useEffect(() => {
+  if (questions.length === 0) return
+
+  let cancelled = false
+
+  const initializeInterview = async () => {
+    setIsTyping(true)
+
+    try {
+      const response = await fetch("/api/interview", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: sessionId.current,
+          candidate: {
+            id: candidate.id,
+            name: candidate.name,
+           jobRole: candidate.role,
+          },
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to start interview")
+      }
+
+      if (cancelled) return
+
+      setMessages([
+        {
+          id: "initial-msg",
+          sender: "interviewer",
+          text: data.reply,
+        },
+      ])
+    } catch (error) {
+      console.error("Interview initialization failed:", error)
+
+      if (!cancelled) {
         setMessages([
           {
-            id: "initial-msg",
+            id: "initial-error",
             sender: "interviewer",
-            text: `Welcome, ${candidate.name}. I'm your AI Interviewer. Today, we'll evaluate your engineering experience in ${candidate.completedTopics.join(", ")}, as well as focus areas: ${candidate.pendingTopics.join(", ")}.\n\nLet's start with a question on ${questions[0].topic}:\n\n${questions[0].question}`,
+            text: "I couldn't start the interview. Please refresh and try again.",
           },
         ])
-      }, 1200)
-      return () => clearTimeout(timer)
+      }
+    } finally {
+      if (!cancelled) {
+        setIsTyping(false)
+      }
     }
-  }, [candidate, questions])
+  }
 
-  // Scroll to bottom on new messages
-  React.useEffect(() => {
+  initializeInterview()
+
+  return () => {
+    cancelled = true
+  }
+}, [candidate, questions])
+
+// Scroll to bottom on new messages
+React.useEffect(() => {
+
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, isTyping])
 
@@ -151,111 +203,96 @@ export default function InterviewConsole() {
   }
 
   // Handle Answer Submission
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!userInput.trim() || isTyping || isAnalyzing) return
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault()
 
-    const currentQuestion = questions[currentIdx]
-    const userMsgText = userInput.trim()
-
-    // Add user message
-    const newUserMsg: Message = {
-      id: `candidate-msg-${Date.now()}`,
-      sender: "candidate",
-      text: userMsgText,
-    }
-    setMessages((prev: Message[]) => [...prev, newUserMsg])
-    setUserInput("")
-
-    // Run evaluation
-    const evaluation = evaluateResponse(
-      userMsgText, 
-      currentQuestion, 
-      currentStep === "followup"
-    )
-
-    // Log the turn
-    const currentQuestionText = currentStep === "main" 
-      ? currentQuestion.question 
-      : currentQuestion.followUpQuestions[0]
-
-    const newLog: EvalLog = {
-      topic: currentQuestion.topic,
-      question: currentQuestionText,
-      isFollowUp: currentStep === "followup",
-      answer: userMsgText,
-      score: evaluation.score,
-      guidance: evaluation.guidance,
-    }
-
-    const updatedLogs = [...evalLogs, newLog]
-    setEvalLogs(updatedLogs)
-
-    // Recalculate metrics (average of all inputs)
-    const newMetrics = updatedLogs.reduce(
-      (acc, log) => {
-        acc.depth += log.score.depth
-        acc.clarity += log.score.clarity
-        acc.communication += log.score.communication
-        return acc
-      },
-      { depth: 0, clarity: 0, communication: 0 }
-    )
-
-    const logCount = updatedLogs.length
-    const computedMetrics = {
-      depth: Math.round(newMetrics.depth / logCount),
-      clarity: Math.round(newMetrics.clarity / logCount),
-      communication: Math.round(newMetrics.communication / logCount),
-    }
-    setMetrics(computedMetrics)
-
-    // Progress chat
-    setIsTyping(true)
-    setTimeout(() => {
-      setIsTyping(false)
-
-      if (currentStep === "main") {
-        // Move to followup
-        setCurrentStep("followup")
-        const followUpQ = currentQuestion.followUpQuestions[0]
-        setMessages((prev: Message[]) => [
-          ...prev,
-          {
-            id: `interviewer-msg-${Date.now()}`,
-            sender: "interviewer",
-            text: `Good point. Let's delve deeper into this: ${followUpQ}`,
-          },
-        ])
-      } else {
-        // Move to next question or complete
-        if (currentIdx < questions.length - 1) {
-          const nextIdx = currentIdx + 1
-          setCurrentIdx(nextIdx)
-          setCurrentStep("main")
-          const nextQ = questions[nextIdx]
-          setMessages((prev: Message[]) => [
-            ...prev,
-            {
-              id: `interviewer-msg-${Date.now()}`,
-              sender: "interviewer",
-              text: `Understood. Let's move on to the next focus area, which is ${nextQ.topic}:\n\n${nextQ.question}`,
-            },
-          ])
-        } else {
-          // Finished the last question!
-          setMessages((prev: Message[]) => [
-            ...prev,
-            {
-              id: `interviewer-msg-${Date.now()}`,
-              sender: "interviewer",
-              text: "Thank you. That completes our technical interview! I have gathered enough data signals to evaluate your readiness. Please click below to generate your performance report.",
-            },
-          ])
-        }
-      }
-    }, 1500)
+  if (!userInput.trim() || isTyping || isAnalyzing || isFinished) {
+    return
   }
+
+  const answer = userInput.trim()
+
+  // Show candidate's answer immediately
+  const newUserMsg: Message = {
+    id: `candidate-msg-${Date.now()}`,
+    sender: "candidate",
+    text: answer,
+  }
+
+  setMessages((prev) => [...prev, newUserMsg])
+  setUserInput("")
+  setIsTyping(true)
+
+  try {
+    const response = await fetch("/api/interview", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sessionId: sessionId.current,
+        message: answer,
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to submit answer")
+    }
+
+    setIsTyping(false)
+
+    // Display interviewer response from the API
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `interviewer-msg-${Date.now()}`,
+        sender: "interviewer",
+        text: data.reply,
+      },
+    ])
+
+    // API returns done=true when the interview is complete
+    if (data.done) {
+ 
+  setIsTyping(false)
+
+  if (data.feedback) {
+    sessionStorage.setItem(
+      "interviewFeedback",
+      JSON.stringify(data.feedback)
+    )
+  }
+
+  router.push(`/feedback?candidate=${candidateId}`)
+
+  return
+}
+
+    // Keep the UI progress in sync with the API flow.
+    if (currentStep === "main") {
+      setCurrentStep("followup")
+    } else if (currentIdx < questions.length - 1) {
+      setCurrentIdx((prev) => prev + 1)
+      setCurrentStep("main")
+    }
+  } catch (error) {
+    console.error("Interview submission failed:", error)
+
+    setIsTyping(false)
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `error-${Date.now()}`,
+        sender: "interviewer",
+        text: "I couldn't process that answer. Please try submitting again.",
+      },
+    ])
+  }
+}
+
 
   // End Interview early or wrap up
   const triggerAnalysis = () => {
