@@ -29,6 +29,9 @@ PrepPilot/
 ├── components.json
 ├── README.md
 ├── app/
+│   ├── api/
+│   │   └── interview/
+│   │       └── route.ts
 │   ├── globals.css
 │   ├── layout.tsx
 │   ├── page.tsx
@@ -42,6 +45,10 @@ PrepPilot/
 │   ├── theme-provider.tsx
 │   ├── candidate/
 │   │   └── candidate-card.tsx
+│   ├── interview/
+│   │   └── interview-console.tsx
+│   ├── feedback/
+│   │   └── feedback-dashboard.tsx
 │   ├── layout/
 │   │   ├── site-footer.tsx
 │   │   └── site-header.tsx
@@ -53,9 +60,11 @@ PrepPilot/
 │       ├── button.tsx
 │       └── card.tsx
 ├── data/
-│   └── candidates.ts
+│   ├── candidates.ts
+│   └── interview-questions.ts
 ├── types/
-│   └── candidate.ts
+│   ├── candidate.ts
+│   └── global-declarations.d.ts
 ├── lib/
 │   ├── utils.ts
 │   ├── ai/
@@ -303,14 +312,112 @@ next-env.d.ts
 
 ### 10. `README.md`
 ```markdown
-# PrepPilot
+# PrepPilot: AI Technical Interview Preparation Agent
 
-This is a Next.js template with shadcn/ui.
+PrepPilot is a technical interview practice application built for the **AI Cohort Hackathon**. It dynamically conducts technical interviews based on a candidate's learning journey, evaluates their performance in real-time across key dimensions, and serves a post-interview feedback dashboard.
 
-## Adding components
+---
 
-To add components to your app, run the following command:
+## Features
 
+- **Home & Candidate Selection**: Displays candidates dynamically imported from the official `candidates.json` dataset.
+- **Dynamic Curriculum Alignment**: Reads the cohort's `curriculum.json` and selects 4 distinct modules completed by the candidate to form a custom question set.
+- **8-Question Conversational Flow**: Asks a main question followed by a reactive follow-up query for each of the 4 topics (satisfying the 8-question minimum rule).
+- **Real-Time Evaluation Console**: Evaluates responses for **Technical Depth**, **Logical Clarity**, and **Communication Quality** with live visual indicators.
+- **HTTP Endpoint Spec Alignment**: Exposes the required `POST /api/interview` route for session setup, conversational turns, and structured feedback output.
+- **Post-Session Dashboard**: Showcases overall readiness index, granular scores, strengths, focus gaps, resource recommendations, and turn-by-turn transcript reviews.
+
+---
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS v4, Framer Motion (micro-animations), Lucide React (icons)
+- **UI Architecture**: shadcn/ui
+
+---
+
+## Project Structure
+
+```
+PrepPilot/
+├── app/
+│   ├── api/
+│   │   └── interview/
+│   │       └── route.ts         # Spec-compliant POST handler
+│   ├── candidate/
+│   │   └── page.tsx             # Candidate Profile details
+│   ├── feedback/
+│   │   └── page.tsx             # Performance feedback dashboard
+│   ├── interview/
+│   │   └── page.tsx             # Interactive chat console
+│   ├── globals.css              # Global styles & Tailwind tokens
+│   ├── layout.tsx
+│   └── page.tsx                 # Candidate list selection
+├── components/
+│   ├── candidate/
+│   │   └── candidate-card.tsx
+│   ├── feedback/
+│   │   └── feedback-dashboard.tsx
+│   ├── interview/
+│   │   └── interview-console.tsx
+│   └── layout/
+│       ├── site-footer.tsx
+│       └── site-header.tsx
+├── data/
+│   ├── candidates.ts            # Maps candidates.json profiles
+│   └── interview-questions.ts   # Dynamic question matching engine
+├── candidates.json              # Official Hackathon candidates list
+├── curriculum.json              # Official Hackathon curriculum details
+└── technical-spec.md            # Hackathon API specification
+```
+
+---
+
+## API Documentation
+
+### `POST /api/interview`
+
+Exposes the required backend endpoint for interview automation.
+
+#### 1. Start Session
+```json
+POST /api/interview
+{
+  "sessionId": "session-xyz",
+  "candidate": {
+    "member": {
+      "id": "CAND-001",
+      "name": "Sarah Johnson"
+    }
+  }
+}
+```
+
+#### 2. Turn Message
+```json
+POST /api/interview
+{
+  "sessionId": "session-xyz",
+  "message": "Text embeddings represent semantic meaning as dense vectors in high-dimensional space..."
+}
+```
+
+#### 3. Output Feedback
+When the 8-turn interview completes, it returns `done: true` alongside structured feedback:
+```json
+{
+  "reply": "Interview completed.",
+  "done": true,
+  "feedback": {
+    "summary": "Demonstrated a solid grasp of text embeddings and vector search metrics.",
+    "strengths": ["Clear explanation of dense retrieval concepts."],
+    "gaps": ["Could expand on vector database indexing scaling policies."],
+    "next": ["Review the indexing objectives on curriculum day 8."]
+  }
+}
+```
 ```bash
 npx shadcn@latest add button
 ```
@@ -748,7 +855,7 @@ export default function CandidatePage() {
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {candidates.map((candidate) => (
             <CandidateCard key={candidate.id} candidate={candidate} />
           ))}
@@ -761,22 +868,48 @@ export default function CandidatePage() {
 
 ### 15. `app/feedback/page.tsx`
 ```tsx
+"use client"
+
+import { Suspense } from "react"
+import FeedbackDashboard from "@/components/feedback/feedback-dashboard"
+import { Loader2 } from "lucide-react"
+
 export default function FeedbackPage() {
   return (
-    <main className="flex min-h-svh items-center justify-center p-6">
-      <h1 className="text-3xl font-semibold">Feedback</h1>
-    </main>
+    <Suspense fallback={
+      <div className="dark min-h-svh bg-black text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="size-8 animate-spin text-cyan-400" />
+          <p className="text-zinc-400 text-sm">Loading performance report...</p>
+        </div>
+      </div>
+    }>
+      <FeedbackDashboard />
+    </Suspense>
   )
 }
 ```
 
 ### 16. `app/interview/page.tsx`
 ```tsx
+"use client"
+
+import { Suspense } from "react"
+import InterviewConsole from "@/components/interview/interview-console"
+import { Loader2 } from "lucide-react"
+
 export default function InterviewPage() {
   return (
-    <main className="flex min-h-svh items-center justify-center p-6">
-      <h1 className="text-3xl font-semibold">Interview</h1>
-    </main>
+    <Suspense fallback={
+      <div className="dark min-h-svh bg-black text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="size-8 animate-spin text-cyan-400" />
+          <p className="text-zinc-400 text-sm">Loading interview console...</p>
+        </div>
+      </div>
+    }>
+      <InterviewConsole />
+    </Suspense>
   )
 }
 ```
@@ -863,6 +996,7 @@ export { ThemeProvider }
 ### 18. `components/candidate/candidate-card.tsx`
 ```tsx
 import { ArrowRight } from "lucide-react"
+import Link from "next/link"
 
 import type { Candidate } from "@/types/candidate"
 import { Button } from "@/components/ui/button"
@@ -884,11 +1018,12 @@ const difficultyStyles = {
 
 type CandidateCardProps = {
   candidate: Candidate
+  key?: any
 }
 
 export function CandidateCard({ candidate }: CandidateCardProps) {
   return (
-    <Card className="group flex h-full flex-col transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:bg-white/[0.055] hover:shadow-cyan-950/25">
+    <Card className="group flex h-full flex-col transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:bg-white/5.5 hover:shadow-cyan-950/25">
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -920,11 +1055,13 @@ export function CandidateCard({ candidate }: CandidateCardProps) {
         <TopicList label="Pending Topics" topics={candidate.pendingTopics} muted />
       </CardContent>
 
-      <CardFooter>
-        <Button className="h-10 w-full border border-white/10 bg-white text-black transition duration-300 hover:bg-zinc-200">
-          Start Interview
-          <ArrowRight className="size-4" />
-        </Button>
+      <CardFooter className="w-full">
+        <Link href={`/interview?candidate=${candidate.id}`} className="w-full">
+          <Button className="h-10 w-full border border-white/10 bg-white text-black transition duration-300 hover:bg-zinc-200">
+            Start Interview
+            <ArrowRight className="size-4" />
+          </Button>
+        </Link>
       </CardFooter>
     </Card>
   )
@@ -970,8 +1107,8 @@ function TopicList({
             className={cn(
               "rounded-md border px-2.5 py-1 text-xs",
               muted
-                ? "border-white/10 bg-white/[0.03] text-zinc-400"
-                : "border-cyan-300/15 bg-cyan-300/[0.07] text-cyan-100"
+                ? "border-white/10 bg-white/3 text-zinc-400"
+                : "border-cyan-300/15 bg-cyan-300/7 text-cyan-100"
             )}
           >
             {topic}
@@ -1007,10 +1144,10 @@ export function SiteHeader() {
       </Link>
 
       <nav className="hidden items-center gap-6 text-sm text-zinc-400 md:flex">
-        <a className="transition hover:text-white" href="#features">
+        <a className="transition hover:text-white" href="/#features">
           Features
         </a>
-        <a className="transition hover:text-white" href="#how-it-works">
+        <a className="transition hover:text-white" href="/#how-it-works">
           How it works
         </a>
       </nav>
@@ -1415,49 +1552,38 @@ export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 ### 26. `data/candidates.ts`
 ```typescript
 import type { Candidate } from "@/types/candidate"
+import candidatesData from "../candidates.json"
 
-export const candidates: Candidate[] = [
-  {
-    id: "maya-sharma",
-    name: "Maya Sharma",
-    role: "Frontend Engineer",
-    skillLevel: "Intermediate",
-    completedTopics: ["React Patterns", "TypeScript", "Accessibility"],
-    pendingTopics: ["System Design", "Performance"],
-    readinessScore: 82,
-    difficulty: "Intermediate",
-  },
-  {
-    id: "arjun-mehta",
-    name: "Arjun Mehta",
-    role: "Backend Engineer",
-    skillLevel: "Advanced",
-    completedTopics: ["APIs", "Databases", "Caching"],
-    pendingTopics: ["Distributed Systems", "Observability"],
-    readinessScore: 88,
-    difficulty: "Advanced",
-  },
-  {
-    id: "nina-patel",
-    name: "Nina Patel",
-    role: "Full Stack Engineer",
-    skillLevel: "Intermediate",
-    completedTopics: ["Next.js", "Node.js", "Authentication"],
-    pendingTopics: ["Scaling", "Testing Strategy"],
-    readinessScore: 76,
-    difficulty: "Intermediate",
-  },
-  {
-    id: "dev-iyer",
-    name: "Dev Iyer",
-    role: "Software Engineer Intern",
-    skillLevel: "Beginner",
-    completedTopics: ["JavaScript", "Data Structures"],
-    pendingTopics: ["Algorithms", "Debugging", "Communication"],
-    readinessScore: 64,
-    difficulty: "Beginner",
-  },
-]
+export const candidates: Candidate[] = candidatesData.candidates.map((cand) => {
+  const years = cand.member.yearsExperience
+  const skillLevel = years >= 8 ? "Senior" : years >= 4 ? "Mid-Level" : "Junior"
+  const difficulty: "Beginner" | "Intermediate" | "Advanced" = 
+    years >= 8 ? "Advanced" : years >= 4 ? "Intermediate" : "Beginner"
+  
+  const completedTopics = cand.missions
+    .filter((m: any) => m.passed)
+    .map((m: any) => m.title)
+  
+  const pendingTopics = cand.missions
+    .filter((m: any) => m.skipped || !m.passed)
+    .map((m: any) => m.title)
+    
+  // Dynamic score based on missions completed and commit days
+  const readinessScore = Math.round(
+    (cand.signals.missionsCompleted / 31) * 70 + (cand.signals.commitDays / 31) * 30
+  )
+
+  return {
+    id: cand.member.id,
+    name: cand.member.name,
+    role: cand.member.jobRole,
+    skillLevel,
+    completedTopics,
+    pendingTopics: pendingTopics.length > 0 ? pendingTopics : ["Advanced Observability", "Multi-region Deployments"],
+    readinessScore: Math.min(100, Math.max(40, readinessScore)),
+    difficulty
+  }
+})
 ```
 
 ### 27. `types/candidate.ts`
@@ -1485,6 +1611,1568 @@ export function cn(...inputs: ClassValue[]) {
 ```
 
 ---
+
+
+
+---
+
+## Newly Added Files & Modules
+
+### 37. `app/api/interview/route.ts`
+```tsx
+import { NextResponse } from "next/server"
+import { getQuestionsForCandidate, Question } from "@/data/interview-questions"
+
+type EvalLog = {
+  topic: string
+  question: string
+  isFollowUp: boolean
+  answer: string
+  score: {
+    depth: number
+    clarity: number
+    communication: number
+  }
+  guidance: string
+}
+
+type SessionState = {
+  candidateId: string
+  candidateName: string
+  candidateRole: string
+  questions: Question[]
+  currentIdx: number
+  currentStep: "main" | "followup"
+  logs: EvalLog[]
+  metrics: {
+    depth: number
+    clarity: number
+    communication: number
+  }
+}
+
+// Global server-side in-memory session store
+const sessions = new Map<string, SessionState>()
+
+// Helper to evaluate responses (similar to client side)
+function evaluateAnswer(answer: string, questionObj: Question): {
+  score: { depth: number; clarity: number; communication: number }
+  guidance: string
+} {
+  const cleanAnswer = answer.trim()
+  if (cleanAnswer.length < 10) {
+    return {
+      score: { depth: 15, clarity: 20, communication: 30 },
+      guidance: "The answer is too brief to evaluate. Please provide a more detailed engineering explanation with technical reasoning and concrete examples.",
+    }
+  }
+
+  // Evaluate Depth
+  let matchedConcepts: string[] = []
+  questionObj.expectedConcepts.forEach((concept) => {
+    if (cleanAnswer.toLowerCase().includes(concept.toLowerCase())) {
+      matchedConcepts.push(concept)
+    }
+  })
+
+  const keywordRatio = questionObj.expectedConcepts.length > 0 
+    ? matchedConcepts.length / questionObj.expectedConcepts.length 
+    : 1
+  
+  let depthBase = keywordRatio * 85
+  const lengthBonus = Math.min(cleanAnswer.length / 350, 1) * 15
+  let depth = Math.min(100, Math.round(depthBase + lengthBonus))
+
+  // Evaluate Clarity
+  const transitions = ["however", "therefore", "because", "since", "while", "whereas", "first", "second", "then", "next", "finally", "for instance", "for example", "contrast", "specifically"]
+  let transitionCount = 0
+  transitions.forEach((word) => {
+    if (cleanAnswer.toLowerCase().includes(word)) transitionCount++
+  })
+
+  const sentences = cleanAnswer.split(/[.!?]+/).filter(s => s.trim().length > 0)
+  let clarity = 60
+  if (transitionCount >= 2) clarity += 15
+  if (sentences.length >= 2) clarity += 15
+  clarity = Math.min(100, clarity)
+
+  // Evaluate Communication
+  const examples = ["for example", "e.g.", "such as", "like", "in my experience", "specifically", "scenario", "production"]
+  let hasExample = false
+  examples.forEach((word) => {
+    if (cleanAnswer.toLowerCase().includes(word)) hasExample = true
+  })
+
+  let communication = 65
+  if (hasExample) communication += 15
+  if (cleanAnswer.length > 120) communication += 15
+  communication = Math.min(100, communication)
+
+  return {
+    score: { depth, clarity, communication },
+    guidance: questionObj.improvementGuidance,
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const { sessionId } = body
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "Missing sessionId parameter" }, { status: 400 })
+    }
+
+    // 1. Initial request (Start Interview)
+    if (body.candidate) {
+      const { candidate } = body
+      // Map candidate id
+      const candidateId = candidate.id || "CAND-001"
+      const candidateName = candidate.name || "Sarah Johnson"
+      const candidateRole = candidate.jobRole || "Senior Data Engineer"
+
+      // Generate dynamic questions based on completed missions
+      const candidateQuestions = getQuestionsForCandidate(candidateId)
+
+      // Initialize session state
+      const newState: SessionState = {
+        candidateId,
+        candidateName,
+        candidateRole,
+        questions: candidateQuestions,
+        currentIdx: 0,
+        currentStep: "main",
+        logs: [],
+        metrics: { depth: 0, clarity: 0, communication: 0 }
+      }
+
+      sessions.set(sessionId, newState)
+
+      const initialQ = candidateQuestions[0]
+      const welcomeMessage = `Welcome, ${candidateName}. I'm your AI Interviewer. Today, we'll evaluate your engineering experience across the curriculum. Let's start with a question on ${initialQ.topic}:\n\n${initialQ.question}`
+
+      return NextResponse.json({
+        reply: welcomeMessage,
+        done: false
+      })
+    }
+
+    // 2. Conversation Turn
+    const sessionState = sessions.get(sessionId)
+    if (!sessionState) {
+      return NextResponse.json({ error: "Session not found. Please start the interview with the candidate object first." }, { status: 400 })
+    }
+
+    const { message } = body
+    if (!message) {
+      return NextResponse.json({ error: "Missing message parameter" }, { status: 400 })
+    }
+
+    const { questions, currentIdx, currentStep, logs } = sessionState
+    const currentQuestion = questions[currentIdx]
+
+    // Evaluate message response
+    const evaluation = evaluateAnswer(message, currentQuestion)
+
+    const currentQuestionText = currentStep === "main"
+      ? currentQuestion.question
+      : currentQuestion.followUpQuestions[0]
+
+    // Create log turn
+    const newLog: EvalLog = {
+      topic: currentQuestion.topic,
+      question: currentQuestionText,
+      isFollowUp: currentStep === "followup",
+      answer: message,
+      score: evaluation.score,
+      guidance: evaluation.guidance
+    }
+
+    sessionState.logs.push(newLog)
+
+    // Recalculate metrics
+    const logCount = sessionState.logs.length
+    const accumulated = sessionState.logs.reduce(
+      (acc, val) => {
+        acc.depth += val.score.depth
+        acc.clarity += val.score.clarity
+        acc.communication += val.score.communication
+        return acc
+      },
+      { depth: 0, clarity: 0, communication: 0 }
+    )
+
+    sessionState.metrics = {
+      depth: Math.round(accumulated.depth / logCount),
+      clarity: Math.round(accumulated.clarity / logCount),
+      communication: Math.round(accumulated.communication / logCount)
+    }
+
+    // Transition state
+    if (currentStep === "main") {
+      sessionState.currentStep = "followup"
+      const followUpQ = currentQuestion.followUpQuestions[0]
+      
+      sessions.set(sessionId, sessionState)
+
+      return NextResponse.json({
+        reply: `Good point. Let's delve deeper into this: ${followUpQ}`,
+        done: false
+      })
+    } else {
+      // Completed follow-up, advance idx or wrap up
+      if (currentIdx < questions.length - 1) {
+        sessionState.currentIdx = currentIdx + 1
+        sessionState.currentStep = "main"
+        
+        sessions.set(sessionId, sessionState)
+        
+        const nextQ = questions[currentIdx + 1]
+        return NextResponse.json({
+          reply: `Understood. Let's move on to the next focus topic, which is ${nextQ.topic}:\n\n${nextQ.question}`,
+          done: false
+        })
+      } else {
+        // All questions completed!
+        const finalScore = Math.round((sessionState.metrics.depth + sessionState.metrics.clarity + sessionState.metrics.communication) / 3)
+        
+        // Generate feedback details
+        const summary = `${sessionState.candidateName} completed the AI Cohort personalized evaluation, scoring an overall readiness index of ${finalScore}%. They showed solid knowledge across the curriculum.`
+
+        const strengths = [
+          `Technical Depth: Demonstrated good grasp of core concepts in ${questions[0].topic} and ${questions[1].topic}.`,
+          `Logical Clarity: Response structure included transition parameters and clear explanations.`
+        ]
+
+        const gaps = [
+          `Focus Topics: Could expand further on advanced tradeoffs in ${questions[2].topic} and ${questions[3].topic}.`
+        ]
+
+        const next = [
+          `Review the official daily objectives in curriculum days ${questions[2].day} and ${questions[3].day}.`,
+          `Practice building end-to-end sandbox integrations for real-time streaming interfaces.`
+        ]
+
+        // Clean up session memory
+        sessions.delete(sessionId)
+
+        return NextResponse.json({
+          reply: "Interview completed.",
+          done: true,
+          feedback: {
+            summary,
+            strengths,
+            gaps,
+            next
+          }
+        })
+      }
+    }
+  } catch (error) {
+    console.error("API error:", error)
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+  }
+}
+```
+
+### 38. `data/interview-questions.ts`
+```typescript
+import candidatesData from "../candidates.json"
+import curriculumData from "../curriculum.json"
+
+export type Question = {
+  id: string
+  day: number
+  topic: string
+  question: string
+  expectedConcepts: string[]
+  evaluationCriteria: string
+  followUpQuestions: string[]
+  improvementGuidance: string
+}
+
+// Hand-crafted premium questions database for core days
+const premiumQuestions: Record<number, Omit<Question, "id" | "day" | "topic">> = {
+  7: {
+    question: "Explain what text embeddings are, how cosine similarity measures their relationship, and why vector dimensions matter.",
+    expectedConcepts: ["embedding", "cosine similarity", "vector", "dimension", "semantic", "high-dimensional"],
+    evaluationCriteria: "The candidate should specify that text embeddings represent semantic meaning as dense vectors in a high-dimensional space. Cosine similarity calculates the cosine of the angle between two vectors, ranging from -1 to 1, focusing on orientation rather than magnitude. More dimensions capture finer semantic details, but increase storage and indexing cost.",
+    followUpQuestions: ["If two sentences contain completely different words but the same meaning, how does the embedding model capture this?"],
+    improvementGuidance: "Make sure to frame embeddings as capturing semantic meaning rather than word matches. Explain cosine similarity mathematically as the dot product divided by the magnitude product."
+  },
+  8: {
+    question: "What is a vector database (like Pinecone), how does it index vectors, and what distance metrics (Euclidean, Cosine) would you choose for search?",
+    expectedConcepts: ["Pinecone", "index", "distance", "metric", "cosine", "euclidean", "HNSW", "search"],
+    evaluationCriteria: "Should define vector databases as engines optimized for fast K-Nearest Neighbor similarity search using indexes like HNSW or IVF. They should contrast Euclidean distance (good for absolute magnitudes) with Cosine distance (standard for text embeddings because it normalizes lengths).",
+    followUpQuestions: ["How does vector index scaling affect search latency and retrieval recall rates in production?"],
+    improvementGuidance: "Focus on how approximate nearest neighbor (ANN) indexes trade off 100% search accuracy (recall) for millisecond latency."
+  },
+  10: {
+    question: "How would you design a retrieval matching engine? What is the difference between dense retrieval and hybrid search?",
+    expectedConcepts: ["dense", "hybrid", "search", "retrieval", "keyword", "bm25", "sparse", "re-rank"],
+    evaluationCriteria: "A strong answer should explain that sparse search (BM25/keyword) looks for exact string matches, whereas dense search (embeddings) looks for semantic meaning. Hybrid search combines both scores (often using Reciprocal Rank Fusion) to get the best of both. Re-ranking is a secondary step utilizing a cross-encoder model to sort the top retrieval candidates.",
+    followUpQuestions: ["When would you introduce a re-ranking model into your retrieval pipeline, and what is the latency trade-off?"],
+    improvementGuidance: "Clearly separate the two retrieval phases: candidate generation (fast, high recall) and re-ranking (slower, high precision)."
+  },
+  12: {
+    question: "Explain Prompt Engineering. Contrast zero-shot prompting with few-shot prompting and Chain-of-Thought (CoT).",
+    expectedConcepts: ["zero-shot", "few-shot", "chain-of-thought", "CoT", "prompt", "examples", "reasoning"],
+    evaluationCriteria: "Explain that zero-shot prompts ask for a direct reply without examples; few-shot prompts supply inputs and expected outputs to guide LLM style; Chain-of-Thought prompts instruct the model to output its step-by-step reasoning steps before the final answer, which improves accuracy on logical tasks.",
+    followUpQuestions: ["How do you protect your system prompts from jailbreaks or prompt leakage when users try to override instructions?"],
+    improvementGuidance: "Highlight that Chain-of-Thought exposes the model's 'thinking path' which guides the token generation parameters towards logical consistency."
+  },
+  13: {
+    question: "How does function calling and structured outputs work in LLMs? How do you ensure the model responds in a valid JSON schema?",
+    expectedConcepts: ["function calling", "JSON schema", "tool", "arguments", "parsing", "validation", "structured outputs"],
+    evaluationCriteria: "The candidate must explain that the developer provides a JSON schema defining function names and arguments. The LLM outputs a structured payload requesting a function call, rather than executing the code itself. The application executes the function and sends the result back to the LLM to complete the turn.",
+    followUpQuestions: ["What does the model actually output when it triggers a tool call, and who executes the function?"],
+    improvementGuidance: "Explicitly mention that the LLM is just a text generator; it cannot execute functions directly. It is the host client application that parses the argument strings and invokes the local codebase APIs."
+  },
+  16: {
+    question: "How would you design a FastAPI backend to support real-time chatbot interactions? How do you manage API routing and connection states?",
+    expectedConcepts: ["FastAPI", "route", "endpoint", "connection", "async", "coroutine", "Pydantic", "routing"],
+    evaluationCriteria: "Should propose asynchronous endpoints (`async def`) to handle concurrent client requests without blocking the thread pool. Pydantic schemas validate inputs/outputs. Connection states can be tracked using middleware or dependency injection, and persistent state can be synced to a DB or memory cache.",
+    followUpQuestions: ["How do you handle rate-limiting and client request timeouts in a FastAPI chat server?"],
+    improvementGuidance: "Stress using `async` keywords. Explain how blocking execution loops in FastAPI block the single-threaded event loop, slowing down concurrent requests."
+  },
+  20: {
+    question: "How do you handle conversation memory and context management in long-running chatbot sessions? What are the tradeoffs of token summarization?",
+    expectedConcepts: ["memory", "context", "token", "summarization", "buffer", "window", "state", "management"],
+    evaluationCriteria: "Should explain memory strategies: Buffer memory (full log, high cost/tokens), window memory (last N messages, loses long-term memory), and summary memory (LLM condenses old turns into a system variable). The tradeoff is detail loss vs token cost limits.",
+    followUpQuestions: ["How do you prevent context window overflow when conversations span hundreds of messages?"],
+    improvementGuidance: "Compare buffer window limits to summarizing memory. Propose hybrid approaches (keeping recent messages in full, summarizing everything older)."
+  },
+  22: {
+    question: "Explain multi-agent orchestration. What is the difference between hierarchical routing (supervisor) and sequential handoffs?",
+    expectedConcepts: ["multi-agent", "orchestration", "supervisor", "handoff", "routing", "LangGraph", "state"],
+    evaluationCriteria: "Must detail sequential handoff (Agent A passes context to Agent B, fixed flow) vs hierarchical routing (a supervisor LLM agent assesses state and decides which worker agent to call next). Mention maintaining shared graph state in platforms like LangGraph.",
+    followUpQuestions: ["How do you prevent agents from getting stuck in infinite loops when passing tasks back and forth?"],
+    improvementGuidance: "Explain how shared graphs coordinate state. Propose recursion limiters (e.g. max 10 steps) to terminate loops when agents ping-pong indefinitely."
+  },
+  23: {
+    question: "What is Model Context Protocol (MCP)? How does it bridge the gap between LLM agents and external databases or local systems?",
+    expectedConcepts: ["MCP", "protocol", "context", "server", "client", "schemas", "bridge", "data source"],
+    evaluationCriteria: "Explain MCP as an open standard protocol enabling LLM applications (clients) to securely connect to diverse data servers (servers) presenting resources, tools, and prompts under a unified interface, replacing ad-hoc tool configurations.",
+    followUpQuestions: ["How does context mapping change when using MCP compared to standard custom tool calls?"],
+    improvementGuidance: "Define MCP as analogous to LSP (Language Server Protocol) but for AI models, separating integration endpoints from client reasoning engines."
+  },
+  28: {
+    question: "Explain how you would containerize and deploy an AI system using Docker and Kubernetes. How do you scale pod configurations for heavy workloads?",
+    expectedConcepts: ["Docker", "Kubernetes", "container", "pod", "scale", "deployment", "workload", "resource limits"],
+    evaluationCriteria: "Detail packaging the application and models in a Dockerfile, deploying to Kubernetes pods, setting resource limits (CPU/GPU boundaries), and utilizing Horizontal Pod Autoscalers (HPA) to scale replicas based on target metrics.",
+    followUpQuestions: ["How do you manage persistent vector index updates in a distributed stateful Kubernetes cluster?"],
+    improvementGuidance: "Frame Docker as the container runtime and Kubernetes as the orchestrator. Discuss scaling GPU workloads and caching large model weights on nodes to avoid long startup times."
+  },
+  31: {
+    question: "Explain the architecture of your cohort capstone project. What technical decisions did you make, and how did you verify production readiness?",
+    expectedConcepts: ["architecture", "capstone", "database", "evaluation", "readiness", "observability", "metrics"],
+    evaluationCriteria: "Should describe their project structure (RAG, agent loops, DB choices), deployment details, and how they evaluated performance (precision, latency, cost metrics). Show clear choices for prompt evaluations and latency bounds.",
+    followUpQuestions: ["What was the most surprising bottleneck in your capstone, and how did you resolve it?"],
+    improvementGuidance: "Detail production checks: logging (traces), evaluation test runs (Ragas/G-Eval), and prompt caching to reduce token overhead."
+  }
+}
+
+// Function to generate/retrieve questions for any candidate dynamically
+export function getQuestionsForCandidate(candidateId: string): Question[] {
+  // Load candidate
+  const candidate = candidatesData.candidates.find((c) => c.member.id === candidateId) || candidatesData.candidates[0]
+  
+  // Find completed days (where passed = true)
+  const completedMissions = candidate.missions.filter((m: any) => m.passed)
+  
+  // Pick up to 5 completed days. To ensure we have variety, select them from different day ranges
+  // If not enough days completed, fallback to any available completed days
+  const selectedDays: number[] = []
+  
+  // Target a diverse set of days if possible
+  const preferredDays = [7, 8, 10, 12, 13, 16, 20, 22, 23, 28, 31]
+  const completedPreferred = completedMissions
+    .map((m: any) => m.day)
+    .filter((day: number) => preferredDays.includes(day))
+
+  // Populate from preferred completed days
+  completedPreferred.forEach((d) => {
+    if (selectedDays.length < 5) selectedDays.push(d)
+  })
+
+  // If still under 5, fill from other completed days
+  completedMissions.forEach((m: any) => {
+    if (selectedDays.length < 5 && !selectedDays.includes(m.day)) {
+      selectedDays.push(m.day)
+    }
+  })
+
+  // Defensive fallback: if candidate completed very few days, fill up with general curriculum days from preferred list
+  if (selectedDays.length < 4) {
+    preferredDays.forEach((d) => {
+      if (selectedDays.length < 4 && !selectedDays.includes(d)) {
+        selectedDays.push(d)
+      }
+    })
+  }
+
+  // Map each selected day to a Question
+  const candidateQuestions: Question[] = selectedDays.map((dayNum, index) => {
+    const dayMeta = curriculumData.days.find((d: any) => d.day === dayNum) || curriculumData.days[0]
+    
+    // Check if we have a premium handcrafted question
+    if (premiumQuestions[dayNum]) {
+      return {
+        id: `q-${candidate.member.id}-${dayNum}`,
+        day: dayNum,
+        topic: dayMeta.title,
+        ...premiumQuestions[dayNum]
+      }
+    }
+
+    // Dynamic question generation fallback for general days
+    const toolsText = dayMeta.tools.length > 0 ? ` using ${dayMeta.tools.slice(0, 3).join(", ")}` : ""
+    const objective = dayMeta.objectives[0] || "achieve the core topics"
+    
+    return {
+      id: `q-${candidate.member.id}-${dayNum}`,
+      day: dayNum,
+      topic: dayMeta.title,
+      question: `Explain how you approached ${dayMeta.title}${toolsText} during the cohort, specifically to: ${objective}.`,
+      expectedConcepts: dayMeta.tools.concat(dayMeta.title.split(" ")).map(s => s.toLowerCase()).filter(s => s.length > 3),
+      evaluationCriteria: `Candidate should outline the design choices, tools used, and implementation details for Day ${dayNum} objective: ${objective}.`,
+      followUpQuestions: [`What was the most challenging part of implementing this setup, and how did you debug it?`],
+      improvementGuidance: `Focus on detailing the exact commands, configuration configurations, and architecture adjustments made to complete the objectives.`
+    }
+  })
+
+  return candidateQuestions
+}
+```
+
+### 39. `types/global-declarations.d.ts`
+```typescript
+// Global declarations fallback for environments without locally installed typings
+import * as React from "react"
+
+declare module "react" {
+  const React: any;
+  export default React;
+  export const useState: any;
+  export const useEffect: any;
+  export const useRef: any;
+  export const useMemo: any;
+  export const createContext: any;
+  export const useContext: any;
+  export type ReactNode = any;
+  export type FormEvent = any;
+  export type KeyboardEvent<T = any> = any;
+  export type ChangeEvent<T = any> = any;
+  export type Key = any;
+}
+
+declare module "react-dom" {
+  const ReactDOM: any;
+  export default ReactDOM;
+}
+
+declare module "react/jsx-runtime" {
+  export const jsx: any;
+  export const jsxs: any;
+  export const Fragment: any;
+}
+
+declare module "next/server" {
+  export const NextResponse: any;
+}
+
+declare module "next/navigation" {
+  export const useRouter: any;
+  export const useSearchParams: any;
+}
+
+declare module "next/link" {
+  const Link: any;
+  export default Link;
+}
+
+declare module "framer-motion" {
+  export const motion: any;
+  export const AnimatePresence: any;
+}
+
+declare module "lucide-react" {
+  export const ArrowRight: any;
+  export const ArrowLeft: any;
+  export const Bot: any;
+  export const ChevronRight: any;
+  export const ChevronLeft: any;
+  export const ChevronUp: any;
+  export const ChevronDown: any;
+  export const Mic2: any;
+  export const Send: any;
+  export const Sparkles: any;
+  export const UserRound: any;
+  export const Loader2: any;
+  export const AlertCircle: any;
+  export const RefreshCw: any;
+  export const Award: any;
+  export const BookOpen: any;
+  export const CheckCircle2: any;
+}
+
+declare module "class-variance-authority" {
+  export const cva: any;
+}
+
+declare module "tailwind-merge" {
+  export const twMerge: any;
+}
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      [elem: string]: any;
+    }
+  }
+}
+```
+
+### 40. `components/interview/interview-console.tsx`
+```tsx
+"use client"
+
+import * as React from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { ArrowRight, Bot, ChevronRight, Mic2, Send, Sparkles, UserRound, Loader2 } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+
+import { candidates } from "@/data/candidates"
+import { getQuestionsForCandidate, Question } from "@/data/interview-questions"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { SiteHeader } from "@/components/layout/site-header"
+import { SiteFooter } from "@/components/layout/site-footer"
+import { cn } from "@/lib/utils"
+
+type Message = {
+  id: string
+  sender: "interviewer" | "candidate"
+  text: string
+}
+
+type EvalLog = {
+  topic: string
+  question: string
+  isFollowUp: boolean
+  answer: string
+  score: {
+    depth: number
+    clarity: number
+    communication: number
+  }
+  guidance: string
+}
+
+export default function InterviewConsole() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const candidateId = searchParams.get("candidate") || "CAND-001"
+
+  // Find candidate details
+  const candidate = candidates.find((c) => c.id === candidateId) || candidates[0]
+  const questions = React.useMemo(() => getQuestionsForCandidate(candidate.id), [candidate.id])
+
+  // Interview state
+  const [currentIdx, setCurrentIdx] = React.useState(0)
+  const [currentStep, setCurrentStep] = React.useState<"main" | "followup">("main")
+  const [messages, setMessages] = React.useState<Message[]>([])
+  const [userInput, setUserInput] = React.useState("")
+  const [isTyping, setIsTyping] = React.useState(false)
+  const [isAnalyzing, setIsAnalyzing] = React.useState(false)
+  const [analysisStatus, setAnalysisStatus] = React.useState("")
+
+  // Metrics
+  const [metrics, setMetrics] = React.useState({ depth: 0, clarity: 0, communication: 0 })
+  const [evalLogs, setEvalLogs] = React.useState<EvalLog[]>([])
+
+  const chatEndRef = React.useRef<HTMLDivElement>(null)
+
+  // Initialize interview
+  React.useEffect(() => {
+    if (questions && questions.length > 0) {
+      setIsTyping(true)
+      const timer = setTimeout(() => {
+        setIsTyping(false)
+        setMessages([
+          {
+            id: "initial-msg",
+            sender: "interviewer",
+            text: `Welcome, ${candidate.name}. I'm your AI Interviewer. Today, we'll evaluate your engineering experience in ${candidate.completedTopics.join(", ")}, as well as focus areas: ${candidate.pendingTopics.join(", ")}.\n\nLet's start with a question on ${questions[0].topic}:\n\n${questions[0].question}`,
+          },
+        ])
+      }, 1200)
+      return () => clearTimeout(timer)
+    }
+  }, [candidate, questions])
+
+  // Scroll to bottom on new messages
+  React.useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages, isTyping])
+
+  // Evaluation engine
+  const evaluateResponse = (answer: string, questionObj: Question, isFollowUp: boolean): {
+    score: { depth: number; clarity: number; communication: number }
+    guidance: string
+  } => {
+    const cleanAnswer = answer.trim()
+    if (cleanAnswer.length < 10) {
+      return {
+        score: { depth: 15, clarity: 20, communication: 30 },
+        guidance: "The answer is too brief to evaluate. Please provide a more detailed engineering explanation with technical reasoning and concrete examples.",
+      }
+    }
+
+    // 1. Evaluate DEPTH
+    let matchedConcepts: string[] = []
+    questionObj.expectedConcepts.forEach((concept) => {
+      const regex = new RegExp(`\\b${concept}\\b`, "i")
+      if (regex.test(cleanAnswer) || cleanAnswer.toLowerCase().includes(concept.toLowerCase())) {
+        matchedConcepts.push(concept)
+      }
+    })
+
+    const keywordRatio = questionObj.expectedConcepts.length > 0 
+      ? matchedConcepts.length / questionObj.expectedConcepts.length 
+      : 1
+    
+    // Depth base is based on keyword coverage
+    let depthBase = keywordRatio * 85
+    // Length bonus (up to 15 points for deep answers)
+    const lengthBonus = Math.min(cleanAnswer.length / 350, 1) * 15
+    let depth = Math.min(100, Math.round(depthBase + lengthBonus))
+    if (cleanAnswer.length < 25) depth = Math.min(depth, 30)
+
+    // 2. Evaluate CLARITY
+    // Check for structure (paragraphs, line breaks) and transition keywords
+    const transitions = ["however", "therefore", "because", "since", "while", "whereas", "first", "second", "then", "next", "finally", "for instance", "for example", "contrast", "specifically"]
+    let transitionCount = 0
+    transitions.forEach((word) => {
+      const regex = new RegExp(`\\b${word}\\b`, "i")
+      if (regex.test(cleanAnswer)) transitionCount++
+    })
+
+    const sentences = cleanAnswer.split(/[.!?]+/).filter(s => s.trim().length > 0)
+    let clarity = 60 // base clarity
+    if (transitionCount >= 2) clarity += 15
+    if (sentences.length >= 2) clarity += 15
+    if (cleanAnswer.includes("\n") || cleanAnswer.length > 200) clarity += 10
+    clarity = Math.min(100, clarity)
+    if (cleanAnswer.length < 25) clarity = Math.min(clarity, 35)
+
+    // 3. Evaluate COMMUNICATION
+    // Looks at tone words, examples, and overall formulation
+    const examples = ["for example", "e.g.", "such as", "like", "in my experience", "specifically", "scenario", "production"]
+    let hasExample = false
+    examples.forEach((word) => {
+      if (cleanAnswer.toLowerCase().includes(word)) hasExample = true
+    })
+
+    let communication = 65 // base
+    if (hasExample) communication += 15
+    if (cleanAnswer.length > 120) communication += 10
+    if (cleanAnswer.length > 250) communication += 10
+    communication = Math.min(100, communication)
+    if (cleanAnswer.length < 25) communication = Math.min(communication, 40)
+
+    return {
+      score: { depth, clarity, communication },
+      guidance: questionObj.improvementGuidance,
+    }
+  }
+
+  // Handle Answer Submission
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!userInput.trim() || isTyping || isAnalyzing) return
+
+    const currentQuestion = questions[currentIdx]
+    const userMsgText = userInput.trim()
+
+    // Add user message
+    const newUserMsg: Message = {
+      id: `candidate-msg-${Date.now()}`,
+      sender: "candidate",
+      text: userMsgText,
+    }
+    setMessages((prev: Message[]) => [...prev, newUserMsg])
+    setUserInput("")
+
+    // Run evaluation
+    const evaluation = evaluateResponse(
+      userMsgText, 
+      currentQuestion, 
+      currentStep === "followup"
+    )
+
+    // Log the turn
+    const currentQuestionText = currentStep === "main" 
+      ? currentQuestion.question 
+      : currentQuestion.followUpQuestions[0]
+
+    const newLog: EvalLog = {
+      topic: currentQuestion.topic,
+      question: currentQuestionText,
+      isFollowUp: currentStep === "followup",
+      answer: userMsgText,
+      score: evaluation.score,
+      guidance: evaluation.guidance,
+    }
+
+    const updatedLogs = [...evalLogs, newLog]
+    setEvalLogs(updatedLogs)
+
+    // Recalculate metrics (average of all inputs)
+    const newMetrics = updatedLogs.reduce(
+      (acc, log) => {
+        acc.depth += log.score.depth
+        acc.clarity += log.score.clarity
+        acc.communication += log.score.communication
+        return acc
+      },
+      { depth: 0, clarity: 0, communication: 0 }
+    )
+
+    const logCount = updatedLogs.length
+    const computedMetrics = {
+      depth: Math.round(newMetrics.depth / logCount),
+      clarity: Math.round(newMetrics.clarity / logCount),
+      communication: Math.round(newMetrics.communication / logCount),
+    }
+    setMetrics(computedMetrics)
+
+    // Progress chat
+    setIsTyping(true)
+    setTimeout(() => {
+      setIsTyping(false)
+
+      if (currentStep === "main") {
+        // Move to followup
+        setCurrentStep("followup")
+        const followUpQ = currentQuestion.followUpQuestions[0]
+        setMessages((prev: Message[]) => [
+          ...prev,
+          {
+            id: `interviewer-msg-${Date.now()}`,
+            sender: "interviewer",
+            text: `Good point. Let's delve deeper into this: ${followUpQ}`,
+          },
+        ])
+      } else {
+        // Move to next question or complete
+        if (currentIdx < questions.length - 1) {
+          const nextIdx = currentIdx + 1
+          setCurrentIdx(nextIdx)
+          setCurrentStep("main")
+          const nextQ = questions[nextIdx]
+          setMessages((prev: Message[]) => [
+            ...prev,
+            {
+              id: `interviewer-msg-${Date.now()}`,
+              sender: "interviewer",
+              text: `Understood. Let's move on to the next focus area, which is ${nextQ.topic}:\n\n${nextQ.question}`,
+            },
+          ])
+        } else {
+          // Finished the last question!
+          setMessages((prev: Message[]) => [
+            ...prev,
+            {
+              id: `interviewer-msg-${Date.now()}`,
+              sender: "interviewer",
+              text: "Thank you. That completes our technical interview! I have gathered enough data signals to evaluate your readiness. Please click below to generate your performance report.",
+            },
+          ])
+        }
+      }
+    }, 1500)
+  }
+
+  // End Interview early or wrap up
+  const triggerAnalysis = () => {
+    if (evalLogs.length === 0) {
+      alert("Please answer at least one question before ending the interview.")
+      return
+    }
+
+    setIsAnalyzing(true)
+    
+    // Simulation processing steps
+    const steps = [
+      "Analyzing semantic depth and key concept coverage...",
+      "Measuring response structure and clarity metrics...",
+      "Evaluating professional vocabulary and communication signals...",
+      "Compiling interview signals and formatting dashboard report...",
+    ]
+
+    let stepIdx = 0
+    setAnalysisStatus(steps[0])
+
+    const interval = setInterval(() => {
+      stepIdx++
+      if (stepIdx < steps.length) {
+        setAnalysisStatus(steps[stepIdx])
+      } else {
+        clearInterval(interval)
+
+        // Save session state to sessionStorage
+        const finalScore = Math.round((metrics.depth + metrics.clarity + metrics.communication) / 3)
+        const sessionPayload = {
+          candidateId: candidate.id,
+          logs: evalLogs,
+          metrics,
+          finalScore,
+          timestamp: new Date().toISOString(),
+        }
+
+        sessionStorage.setItem("preppilot_session", JSON.stringify(sessionPayload))
+        
+        // Redirect to feedback page
+        router.push(`/feedback?candidate=${candidate.id}`)
+      }
+    }, 1200)
+  }
+
+  const isFinished = messages[messages.length - 1]?.text.includes("completes our technical interview")
+
+  return (
+    <div className="dark min-h-svh bg-black text-white flex flex-col justify-between">
+      <SiteHeader />
+
+      <main className="flex-1 flex flex-col relative px-4 md:px-6 max-w-6xl mx-auto w-full py-6 gap-6">
+        <AnimatePresence>
+          {isAnalyzing && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/90 z-50 rounded-xl border border-white/10 flex flex-col items-center justify-center gap-6"
+            >
+              <Loader2 className="size-10 text-cyan-400 animate-spin" />
+              <div className="flex flex-col items-center text-center max-w-md px-6">
+                <h3 className="text-xl font-medium text-white mb-2">Analyzing Performance</h3>
+                <p className="text-sm text-zinc-400 h-10 transition-all duration-300 animate-pulse">
+                  {analysisStatus}
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Dashboard Header Info */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-4">
+          <div className="flex items-center gap-4">
+            <span className="flex size-10 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-cyan-300">
+              <Bot className="size-5" />
+            </span>
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight text-white flex items-center gap-2">
+                PrepPilot Interview Board
+                <span className="text-xs font-normal border border-cyan-400/20 bg-cyan-400/10 text-cyan-300 px-2 py-0.5 rounded-full">
+                  Live
+                </span>
+              </h1>
+              <p className="text-xs text-zinc-400">
+                Session with <span className="text-white font-medium">{candidate.name}</span> &bull; {candidate.role}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="text-xs text-zinc-400 text-right">
+              Progress
+              <p className="text-sm font-semibold text-white">
+                {currentIdx + 1} / {questions.length} Focus Areas
+              </p>
+            </div>
+            <div className="h-2 w-24 bg-white/10 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-linear-to-r from-cyan-400 to-emerald-400 transition-all duration-500" 
+                style={{ width: `${((currentIdx + (currentStep === "followup" ? 0.5 : 0)) / questions.length) * 100}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Core Layout Grid */}
+        <div className="grid gap-6 lg:grid-cols-[1fr_18rem] flex-1">
+          {/* Chat Console Section */}
+          <div className="flex flex-col border border-white/10 rounded-xl bg-zinc-950/70 p-4 shadow-2xl overflow-hidden min-h-112.5">
+            {/* Scrollable messages container */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2 max-h-95 min-h-75">
+              {messages.map((msg: Message) => {
+                const isAI = msg.sender === "interviewer"
+                return (
+                  <motion.article
+                    key={msg.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={cn(
+                      "rounded-lg border p-4 max-w-[85%] shadow-md",
+                      isAI
+                        ? "border-cyan-300/10 bg-cyan-300/4 text-zinc-100"
+                        : "border-white/5 bg-white/5 ml-auto text-zinc-200"
+                    )}
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <span
+                        className={cn(
+                          "flex size-7 items-center justify-center rounded-md border",
+                          isAI
+                            ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-200"
+                            : "border-white/10 bg-white/10 text-white"
+                        )}
+                      >
+                        {isAI ? <Bot className="size-3.5" /> : <UserRound className="size-3.5" />}
+                      </span>
+                      <span className="text-xs font-semibold text-white">
+                        {isAI ? "AI Interviewer" : candidate.name}
+                      </span>
+                    </div>
+                    <p className="text-sm leading-6 whitespace-pre-line text-zinc-300">
+                      {msg.text}
+                    </p>
+                  </motion.article>
+                )
+              })}
+
+              {isTyping && (
+                <div className="flex items-center gap-3 text-sm text-zinc-500 bg-cyan-300/2 border border-cyan-300/5 p-4 rounded-lg w-40">
+                  <span className="flex size-7 items-center justify-center rounded-md border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
+                    <Bot className="size-3.5" />
+                  </span>
+                  <div className="flex gap-1 items-center">
+                    <span className="w-1.5 h-1.5 bg-cyan-300 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1.5 h-1.5 bg-cyan-300 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1.5 h-1.5 bg-cyan-300 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* User Input Form */}
+            <form onSubmit={handleSubmit} className="border-t border-white/10 pt-4 mt-4 flex gap-3 items-end">
+              <div className="flex-1 relative">
+                <textarea
+                  value={userInput}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setUserInput(e.target.value)}
+                  placeholder={
+                    isFinished 
+                      ? "Interview completed. Please click 'Generate Performance Report'." 
+                      : `Type your explanation for ${questions[currentIdx]?.topic || "focus area"}...`
+                  }
+                  disabled={isFinished || isTyping || isAnalyzing}
+                  className="w-full bg-black/60 border border-white/10 rounded-lg py-2 px-3 pr-10 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 resize-none h-16 min-h-16 max-h-24 disabled:opacity-50"
+                  onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSubmit(e)
+                    }
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={!userInput.trim() || isFinished || isTyping || isAnalyzing}
+                  className="absolute right-2.5 bottom-2.5 size-7 rounded-md bg-white text-black hover:bg-zinc-200 flex items-center justify-center disabled:opacity-40 transition-colors"
+                  aria-label="Send answer"
+                >
+                  <Send className="size-3.5" />
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Performance Signals Dashboard (Right Hand Column) */}
+          <div className="flex flex-col md:grid md:grid-cols-2 lg:flex lg:flex-col gap-4">
+            <Card className="border-white/10 bg-zinc-950/70 shadow-2xl">
+              <CardHeader className="p-4 pb-2 border-b border-white/10">
+                <CardTitle className="text-xs uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
+                  <Mic2 className="size-4 text-cyan-400" />
+                  Live Session Signals
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 flex flex-col sm:grid sm:grid-cols-3 lg:flex lg:flex-col gap-4">
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-xs">
+                    <span className="text-zinc-500">Depth</span>
+                    <span className={cn("font-medium", metrics.depth > 70 ? "text-emerald-300" : metrics.depth > 40 ? "text-cyan-300" : "text-zinc-400")}>
+                      {metrics.depth > 0 ? `${metrics.depth}%` : "Awaiting response"}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div 
+                      className="h-full bg-linear-to-r from-cyan-400 to-emerald-400 transition-all duration-500" 
+                      style={{ width: `${metrics.depth}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-xs">
+                    <span className="text-zinc-500">Clarity</span>
+                    <span className={cn("font-medium", metrics.clarity > 70 ? "text-emerald-300" : metrics.clarity > 40 ? "text-cyan-300" : "text-zinc-400")}>
+                      {metrics.clarity > 0 ? `${metrics.clarity}%` : "Awaiting response"}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div 
+                      className="h-full bg-linear-to-r from-cyan-400 to-white transition-all duration-500" 
+                      style={{ width: `${metrics.clarity}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-xs">
+                    <span className="text-zinc-500">Communication</span>
+                    <span className={cn("font-medium", metrics.communication > 70 ? "text-emerald-300" : metrics.communication > 40 ? "text-cyan-300" : "text-zinc-400")}>
+                      {metrics.communication > 0 ? `${metrics.communication}%` : "Awaiting response"}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div 
+                      className="h-full bg-linear-to-r from-cyan-400 to-violet-400 transition-all duration-500" 
+                      style={{ width: `${metrics.communication}%` }}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-white/10 bg-zinc-950/70 p-4 shadow-2xl flex-1 flex flex-col justify-between">
+              <div className="space-y-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-1.5">
+                  <Sparkles className="size-3 text-cyan-400" />
+                  Target Focus Topic
+                </p>
+                <div className="rounded border border-cyan-500/20 bg-cyan-500/5 p-3">
+                  <p className="text-xs font-semibold text-white">
+                    {questions[currentIdx]?.topic || "Loading topic"}
+                  </p>
+                  <p className="text-xs text-zinc-400 mt-1 leading-5">
+                    {currentStep === "main" 
+                      ? "Present a detailed high-level explanation. Mention architectural choices, trade-offs, and expected pitfalls."
+                      : "Expand on your previous logic. AI is asking a critical follow-up questions to probe context limits."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col gap-2">
+                {isFinished ? (
+                  <Button 
+                    onClick={triggerAnalysis} 
+                    className="w-full bg-emerald-400 text-black hover:bg-emerald-500 font-semibold"
+                  >
+                    Generate Performance Report
+                    <ChevronRight className="size-4" />
+                  </Button>
+                ) : (
+                  <>
+                    <Button 
+                      onClick={triggerAnalysis} 
+                      disabled={evalLogs.length === 0 || isAnalyzing}
+                      variant="outline" 
+                      className="w-full border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs"
+                    >
+                      Finish & Evaluate Early
+                    </Button>
+                    <p className="text-[10px] text-zinc-500 text-center leading-normal">
+                      Ending early evaluates you based on the questions you've answered so far.
+                    </p>
+                  </>
+                )}
+              </div>
+            </Card>
+          </div>
+        </div>
+      </main>
+
+      <SiteFooter />
+    </div>
+  )
+}
+```
+
+### 41. `components/feedback/feedback-dashboard.tsx`
+```tsx
+"use client"
+
+import * as React from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { ArrowLeft, Award, CheckCircle2, ChevronDown, ChevronUp, AlertCircle, RefreshCw, BookOpen, BrainCircuit } from "lucide-react"
+import Link from "next/link"
+
+import { candidates } from "@/data/candidates"
+import { SiteHeader } from "@/components/layout/site-header"
+import { SiteFooter } from "@/components/layout/site-footer"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+
+type EvalLog = {
+  topic: string
+  question: string
+  isFollowUp: boolean
+  answer: string
+  score: {
+    depth: number
+    clarity: number
+    communication: number
+  }
+  guidance: string
+}
+
+type SessionPayload = {
+  candidateId: string
+  logs: EvalLog[]
+  metrics: {
+    depth: number
+    clarity: number
+    communication: number
+  }
+  finalScore: number
+  timestamp: string
+}
+
+export default function FeedbackDashboard() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const candidateId = searchParams.get("candidate") || "CAND-001"
+
+  const [session, setSession] = React.useState<SessionPayload | null>(null)
+  const [expandedIdx, setExpandedIdx] = React.useState<Record<number, boolean>>({})
+
+  // Find candidate details
+  const candidate = candidates.find((c) => c.id === candidateId) || candidates[0]
+
+  // Retrieve session data
+  React.useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("preppilot_session")
+      if (stored) {
+        const parsed = JSON.parse(stored) as SessionPayload
+        if (parsed.candidateId === candidateId) {
+          setSession(parsed)
+          // Default expand the first item
+          setExpandedIdx({ 0: true })
+        }
+      }
+    } catch (e) {
+      console.error("Failed to parse sessionStorage payload", e)
+    }
+  }, [candidateId])
+
+  const toggleExpand = (idx: number) => {
+    setExpandedIdx((prev: Record<number, boolean>) => ({ ...prev, [idx]: !prev[idx] }))
+  }
+
+  // Fallback if no session found
+  if (!session) {
+    return (
+      <div className="dark min-h-svh bg-black text-white flex flex-col justify-between">
+        <SiteHeader />
+        <main className="flex-1 flex items-center justify-center p-6">
+          <Card className="border-white/10 bg-zinc-950/70 p-6 max-w-md w-full text-center">
+            <div className="flex justify-center mb-4">
+              <AlertCircle className="size-12 text-yellow-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-white mb-2">No Active Session Found</h2>
+            <p className="text-zinc-400 text-sm mb-6">
+              We couldn't retrieve any recent interview performance data for {candidate.name}. Please complete an interview first.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Link href={`/interview?candidate=${candidate.id}`}>
+                <Button className="w-full bg-white text-black hover:bg-zinc-200">
+                  Start New Interview
+                </Button>
+              </Link>
+              <Link href="/candidate">
+                <Button variant="outline" className="w-full border-white/10 hover:bg-white/10 text-white">
+                  Back to Candidates
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        </main>
+        <SiteFooter />
+      </div>
+    )
+  }
+
+  // Helper values for generating feedback content based on scores
+  const getFeedbackDetails = () => {
+    const depth = session.metrics.depth
+    const clarity = session.metrics.clarity
+    const communication = session.metrics.communication
+
+    let strengths: string[] = []
+    let gaps: string[] = []
+    let nextSteps: string[] = []
+
+    // Evaluate Strengths
+    if (depth >= 75) {
+      strengths.push("Deep technical execution: Demonstrated strong understanding of core architectural parameters and trade-offs.")
+    } else {
+      strengths.push("Conceptual familiarity: Able to outline the high-level purpose and basic behaviors of the required tools.")
+    }
+
+    if (clarity >= 75) {
+      strengths.push("Structured logical flow: Explained complex software engineering topics in a clear, step-by-step layout.")
+    } else {
+      strengths.push("Receptive communication: Answers were focused on the prompt and directly targeted the core question.")
+    }
+
+    if (communication >= 75) {
+      strengths.push("Production readiness: Supplemented answers with concrete real-world context, scenarios, or code metrics.")
+    }
+
+    // Evaluate Gaps & Next Steps based on Candidate specialization
+    if (candidate.role === "Frontend Engineer") {
+      if (depth < 75) {
+        gaps.push("React State boundaries: Needs to elaborate further on controlled render loops and state synchronization side effects.")
+        nextSteps.push("Deep-dive React documentation regarding reconciliation, key indexes, and state scheduling.")
+      }
+      gaps.push("Advanced Web Vitals: Missed specific details about browser paint rendering lifecycles (LCP/CLS optimizations).")
+      nextSteps.push("Study Next.js custom performance metrics, font-optimization APIs, and structural CLS debugging in Chrome DevTools.")
+    } else if (candidate.role === "Backend Engineer") {
+      if (depth < 75) {
+        gaps.push("Distributed locks: Did not mention Redis transaction parameters or Lua scripts for atomic rate limiting checks.")
+        nextSteps.push("Experiment with write atomic primitives using Redis Lua scripting or Zookeeper lease locks.")
+      }
+      gaps.push("Cache stampede triggers: Lacks explicit solutions to protect backend databases when cache keys drop concurrently.")
+      nextSteps.push("Review cache-aside synchronization algorithms, specifically mutex locks, and distributed trace observability.")
+    } else if (candidate.role === "Full Stack Engineer") {
+      gaps.push("JWT Cookie parameters: Needs stronger security constraints (HttpOnly, SameSite, Secure flags) to defend auth state.")
+      nextSteps.push("Implement mock Auth middleware in Next.js using custom secure HTTP cookies and csrf validation.")
+      nextSteps.push("Read up on scaling persistent WebSocket connection adapters over Redis PubSub backplanes.")
+    } else {
+      // Software Engineer Intern
+      gaps.push("Call stack mechanics: Lacks full understanding of JS task scheduling queues (microtask loop priority).")
+      nextSteps.push("Create visual tracing diagrams of promise execution hierarchies vs browser timeout triggers.")
+      nextSteps.push("Study basic search algorithm pointer mutations (binary boundaries log-n limits).")
+    }
+
+    // Always provide general steps
+    if (nextSteps.length === 0) {
+      nextSteps.push("Review intermediate system design patterns related to replication, load-balancers, and connection state.")
+    }
+    if (gaps.length === 0) {
+      gaps.push("Edge-case exception handling: Answers could describe how systems fail under network partitions or memory starvation.")
+    }
+
+    return { strengths, gaps, nextSteps }
+  }
+
+  const feedbackDetails = getFeedbackDetails()
+
+  return (
+    <div className="dark min-h-svh bg-black text-white flex flex-col justify-between">
+      <SiteHeader />
+
+      <main className="flex-1 px-4 md:px-6 max-w-6xl mx-auto w-full py-6 flex flex-col gap-6">
+        
+        {/* Navigation Breadcrumb */}
+        <div className="flex items-center justify-between border-b border-white/10 pb-4">
+          <div className="flex items-center gap-3">
+            <Link href="/candidate">
+              <Button variant="ghost" size="xs" className="text-zinc-400 hover:text-white border border-white/10 h-8 px-3">
+                <ArrowLeft className="size-4 mr-1.5" />
+                Back to Candidates
+              </Button>
+            </Link>
+            <span className="text-zinc-500 text-xs">/</span>
+            <span className="text-zinc-300 text-xs font-medium">Evaluation Report</span>
+          </div>
+
+          <div className="text-xs text-zinc-500">
+            Evaluated on {new Date(session.timestamp).toLocaleDateString()}
+          </div>
+        </div>
+
+        {/* Dashboard Title */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-white">Performance Evaluation Report</h1>
+            <p className="text-sm text-zinc-400 mt-1">
+              Readiness profile for <span className="text-white font-medium">{candidate.name}</span> &bull; {candidate.role}
+            </p>
+          </div>
+          <Link href={`/interview?candidate=${candidate.id}`}>
+            <Button size="sm" className="bg-white text-black hover:bg-zinc-200 gap-1.5 h-9 font-semibold">
+              <RefreshCw className="size-3.5" />
+              Retake Interview
+            </Button>
+          </Link>
+        </div>
+
+        {/* Main Grid: Score Summary & Dimensions */}
+        <div className="grid gap-6 md:grid-cols-[16rem_1fr]">
+          {/* Radial score Dial Card */}
+          <Card className="border-white/10 bg-zinc-950/70 shadow-2xl flex flex-col items-center justify-center p-6 text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 mb-6">
+              Readiness Signal
+            </p>
+            
+            <div className="relative size-32 flex items-center justify-center">
+              {/* Glowing background ring */}
+              <div className="absolute inset-0 rounded-full border-4 border-white/5" />
+              {/* Score circle */}
+              <svg className="absolute inset-0 size-full -rotate-90">
+                <circle
+                  cx="64"
+                  cy="64"
+                  r="60"
+                  stroke="currentColor"
+                  strokeWidth="8"
+                  fill="transparent"
+                  className="text-cyan-400/20"
+                />
+                <circle
+                  cx="64"
+                  cy="64"
+                  r="60"
+                  stroke="currentColor"
+                  strokeWidth="8"
+                  fill="transparent"
+                  strokeDasharray={`${2 * Math.PI * 60}`}
+                  strokeDashoffset={`${2 * Math.PI * 60 * (1 - session.finalScore / 100)}`}
+                  className="text-cyan-400 transition-all duration-1000"
+                />
+              </svg>
+              {/* Inner score text */}
+              <div className="flex flex-col items-center">
+                <span className="text-3xl font-extrabold text-white">{session.finalScore}%</span>
+                <span className="text-[10px] uppercase text-zinc-400 mt-0.5 tracking-wider">Score</span>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-white/10 pt-4 w-full">
+              <p className="text-xs text-zinc-400">
+                {session.finalScore >= 80 
+                  ? "Highly prepared. Shows strong depth and communication." 
+                  : session.finalScore >= 60 
+                    ? "Moderate readiness. Solid basics with minor focus areas." 
+                    : "Needs preparation. Focus on recommended next steps."}
+              </p>
+            </div>
+          </Card>
+
+          {/* Metrics breakdown sliders */}
+          <Card className="border-white/10 bg-zinc-950/70 p-6 shadow-2xl">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 mb-6 flex items-center gap-1.5">
+              <Award className="size-4 text-cyan-400" />
+              Dimension Breakdown
+            </h3>
+            <div className="space-y-6 md:grid md:grid-cols-3 md:space-y-0 md:gap-6 lg:flex lg:flex-col lg:space-y-6">
+              <div>
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="text-zinc-300 font-medium">Technical Depth</span>
+                  <span className="text-cyan-300 font-semibold">{session.metrics.depth}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                  <div className="h-full bg-linear-to-r from-cyan-400 to-emerald-400" style={{ width: `${session.metrics.depth}%` }} />
+                </div>
+                <p className="text-xs text-zinc-500 mt-1.5">
+                  Evaluates use of technical keywords, terminology accuracy, and knowledge of tradeoffs.
+                </p>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="text-zinc-300 font-medium">Logical Clarity</span>
+                  <span className="text-cyan-300 font-semibold">{session.metrics.clarity}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                  <div className="h-full bg-linear-to-r from-cyan-400 to-white" style={{ width: `${session.metrics.clarity}%` }} />
+                </div>
+                <p className="text-xs text-zinc-500 mt-1.5">
+                  Evaluates answer structure, step-by-step layout reasoning, and syntax transition words.
+                </p>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="text-zinc-300 font-medium">Communication Quality</span>
+                  <span className="text-cyan-300 font-semibold">{session.metrics.communication}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                  <div className="h-full bg-linear-to-r from-cyan-400 to-violet-400" style={{ width: `${session.metrics.communication}%` }} />
+                </div>
+                <p className="text-xs text-zinc-500 mt-1.5">
+                  Evaluates thoroughness, tone professionalism, and presence of concrete production examples.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* Strengths & Gaps Section */}
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Strengths Card */}
+          <Card className="border-white/10 bg-zinc-950/70 p-5 shadow-2xl">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400 mb-4 flex items-center gap-2">
+              <CheckCircle2 className="size-4" />
+              Observed Strengths
+            </h3>
+            <ul className="space-y-3">
+              {feedbackDetails.strengths.map((s, idx) => (
+                <li key={idx} className="flex gap-2.5 items-start text-sm text-zinc-300">
+                  <span className="text-emerald-400 mt-1">&bull;</span>
+                  <p className="leading-6">{s}</p>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          {/* Gaps & Focus Areas Card */}
+          <Card className="border-white/10 bg-zinc-950/70 p-5 shadow-2xl">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300 mb-4 flex items-center gap-2">
+              <BrainCircuit className="size-4" />
+              Focus Areas & Gaps
+            </h3>
+            <ul className="space-y-3">
+              {feedbackDetails.gaps.map((g, idx) => (
+                <li key={idx} className="flex gap-2.5 items-start text-sm text-zinc-300">
+                  <span className="text-cyan-300 mt-1">&bull;</span>
+                  <p className="leading-6">{g}</p>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+
+        {/* Actionable Next Steps */}
+        <Card className="border-white/10 bg-zinc-950/70 p-5 shadow-2xl">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 mb-4 flex items-center gap-2">
+            <BookOpen className="size-4 text-cyan-400" />
+            Recommended Next Steps
+          </h3>
+          <ul className="space-y-3">
+            {feedbackDetails.nextSteps.map((step, idx) => (
+              <li key={idx} className="flex gap-2.5 items-start text-sm text-zinc-300">
+                <span className="size-5 rounded-full bg-cyan-400/10 text-cyan-300 text-xs font-semibold flex items-center justify-center shrink-0 mt-0.5">
+                  {idx + 1}
+                </span>
+                <p className="leading-6">{step}</p>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        {/* Detailed Transcript Review */}
+        <div>
+          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            Interactive Transcript Review
+            <span className="text-xs font-normal text-zinc-500">
+              ({session.logs.length} answers logged)
+            </span>
+          </h2>
+
+          <div className="space-y-3">
+            {session.logs.map((log: EvalLog, idx: number) => {
+              const isExpanded = expandedIdx[idx] || false
+              const avgScore = Math.round((log.score.depth + log.score.clarity + log.score.communication) / 3)
+
+              return (
+                <Card 
+                  key={idx} 
+                  className={cn(
+                    "border-white/10 bg-zinc-950/40 overflow-hidden transition-all duration-300",
+                    isExpanded && "border-cyan-300/25 bg-zinc-950/80 shadow-lg shadow-cyan-950/10"
+                  )}
+                >
+                  {/* Accordion Trigger Header */}
+                  <button
+                    onClick={() => toggleExpand(idx)}
+                    className="w-full flex items-center justify-between p-4 text-left hover:bg-white/2 transition-colors"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                      <span className="text-xs font-semibold border border-white/10 bg-white/3 text-zinc-400 px-2.5 py-0.5 rounded-full w-fit">
+                        {log.topic} {log.isFollowUp && "(Follow-up)"}
+                      </span>
+                      <span className="text-sm font-semibold text-white line-clamp-2 md:line-clamp-1 max-w-sm md:max-w-md whitespace-normal">
+                        {log.question}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-4 shrink-0">
+                      <div className="text-xs text-zinc-400 flex items-center gap-2">
+                        Turn Score
+                        <span className={cn(
+                          "font-bold text-sm px-1.5 py-0.5 rounded",
+                          avgScore >= 80 ? "text-emerald-300 bg-emerald-300/10" : avgScore >= 60 ? "text-cyan-300 bg-cyan-300/10" : "text-zinc-400 bg-white/5"
+                        )}>
+                          {avgScore}%
+                        </span>
+                      </div>
+                      {isExpanded ? <ChevronUp className="size-4 text-zinc-500" /> : <ChevronDown className="size-4 text-zinc-500" />}
+                    </div>
+                  </button>
+
+                  {/* Accordion Expandable Content */}
+                  {isExpanded && (
+                    <div className="border-t border-white/10 p-4 space-y-4 bg-black/40">
+                      {/* Interviewer Question */}
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase font-semibold text-cyan-400 tracking-wider">Interviewer Prompt</p>
+                        <p className="text-sm text-zinc-300 leading-6 bg-cyan-400/2 border border-cyan-400/5 p-3 rounded-lg">
+                          {log.question}
+                        </p>
+                      </div>
+
+                      {/* Candidate Answer */}
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase font-semibold text-white tracking-wider">Your Response</p>
+                        <p className="text-sm text-zinc-300 leading-6 bg-white/3 border border-white/5 p-3 rounded-lg whitespace-pre-wrap italic">
+                          "{log.answer}"
+                        </p>
+                      </div>
+
+                      {/* Specific Turn Scores */}
+                      <div className="grid gap-3 grid-cols-3 bg-zinc-950 p-3 rounded-lg border border-white/5 text-center">
+                        <div>
+                          <p className="text-[10px] text-zinc-500 uppercase">Depth</p>
+                          <p className="text-sm font-bold text-white mt-0.5">{log.score.depth}%</p>
+                        </div>
+                        <div className="border-x border-white/10">
+                          <p className="text-[10px] text-zinc-500 uppercase">Clarity</p>
+                          <p className="text-sm font-bold text-white mt-0.5">{log.score.clarity}%</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-zinc-500 uppercase">Communication</p>
+                          <p className="text-sm font-bold text-white mt-0.5">{log.score.communication}%</p>
+                        </div>
+                      </div>
+
+                      {/* How to Improve */}
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase font-semibold text-emerald-400 tracking-wider">Improvement Guidance</p>
+                        <p className="text-sm text-zinc-300 leading-6 bg-emerald-400/2 border border-emerald-400/5 p-3 rounded-lg">
+                          {log.guidance}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+
+      </main>
+
+      <SiteFooter />
+    </div>
+  )
+}
+```
 
 ## Empty Placeholders & Folders
 
