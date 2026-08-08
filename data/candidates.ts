@@ -1,44 +1,33 @@
 import type { Candidate } from "@/types/candidate"
+import candidatesData from "../candidates.json"
 
-export const candidates: Candidate[] = [
-  {
-    id: "maya-sharma",
-    name: "Maya Sharma",
-    role: "Frontend Engineer",
-    skillLevel: "Intermediate",
-    completedTopics: ["React Patterns", "TypeScript", "Accessibility"],
-    pendingTopics: ["System Design", "Performance"],
-    readinessScore: 82,
-    difficulty: "Intermediate",
-  },
-  {
-    id: "arjun-mehta",
-    name: "Arjun Mehta",
-    role: "Backend Engineer",
-    skillLevel: "Advanced",
-    completedTopics: ["APIs", "Databases", "Caching"],
-    pendingTopics: ["Distributed Systems", "Observability"],
-    readinessScore: 88,
-    difficulty: "Advanced",
-  },
-  {
-    id: "nina-patel",
-    name: "Nina Patel",
-    role: "Full Stack Engineer",
-    skillLevel: "Intermediate",
-    completedTopics: ["Next.js", "Node.js", "Authentication"],
-    pendingTopics: ["Scaling", "Testing Strategy"],
-    readinessScore: 76,
-    difficulty: "Intermediate",
-  },
-  {
-    id: "dev-iyer",
-    name: "Dev Iyer",
-    role: "Software Engineer Intern",
-    skillLevel: "Beginner",
-    completedTopics: ["JavaScript", "Data Structures"],
-    pendingTopics: ["Algorithms", "Debugging", "Communication"],
-    readinessScore: 64,
-    difficulty: "Beginner",
-  },
-]
+export const candidates: Candidate[] = candidatesData.candidates.map((cand) => {
+  const years = cand.member.yearsExperience
+  const skillLevel = years >= 8 ? "Senior" : years >= 4 ? "Mid-Level" : "Junior"
+  const difficulty: "Beginner" | "Intermediate" | "Advanced" = 
+    years >= 8 ? "Advanced" : years >= 4 ? "Intermediate" : "Beginner"
+  
+  const completedTopics = cand.missions
+    .filter((m: any) => m.passed)
+    .map((m: any) => m.title)
+  
+  const pendingTopics = cand.missions
+    .filter((m: any) => m.skipped || !m.passed)
+    .map((m: any) => m.title)
+    
+  // Dynamic score based on missions completed and commit days
+  const readinessScore = Math.round(
+    (cand.signals.missionsCompleted / 31) * 70 + (cand.signals.commitDays / 31) * 30
+  )
+
+  return {
+    id: cand.member.id,
+    name: cand.member.name,
+    role: cand.member.jobRole,
+    skillLevel,
+    completedTopics,
+    pendingTopics: pendingTopics.length > 0 ? pendingTopics : ["Advanced Observability", "Multi-region Deployments"],
+    readinessScore: Math.min(100, Math.max(40, readinessScore)),
+    difficulty
+  }
+})

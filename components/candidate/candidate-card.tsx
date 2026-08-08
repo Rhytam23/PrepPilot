@@ -1,4 +1,5 @@
 import { ArrowRight } from "lucide-react"
+import Link from "next/link"
 
 import type { Candidate } from "@/types/candidate"
 import { Button } from "@/components/ui/button"
@@ -24,7 +25,7 @@ type CandidateCardProps = {
 
 export function CandidateCard({ candidate }: CandidateCardProps) {
   return (
-    <Card className="group flex h-full flex-col transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:bg-white/[0.055] hover:shadow-cyan-950/25">
+    <Card className="group flex h-full flex-col transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:bg-white/5.5 hover:shadow-cyan-950/25">
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -56,11 +57,13 @@ export function CandidateCard({ candidate }: CandidateCardProps) {
         <TopicList label="Pending Topics" topics={candidate.pendingTopics} muted />
       </CardContent>
 
-      <CardFooter>
-        <Button className="h-10 w-full border border-white/10 bg-white text-black transition duration-300 hover:bg-zinc-200">
-          Start Interview
-          <ArrowRight className="size-4" />
-        </Button>
+      <CardFooter className="w-full">
+        <Link href={`/interview?candidate=${candidate.id}`} className="w-full">
+          <Button className="h-10 w-full border border-white/10 bg-white text-black transition duration-300 hover:bg-zinc-200">
+            Start Interview
+            <ArrowRight className="size-4" />
+          </Button>
+        </Link>
       </CardFooter>
     </Card>
   )
@@ -106,8 +109,8 @@ function TopicList({
             className={cn(
               "rounded-md border px-2.5 py-1 text-xs",
               muted
-                ? "border-white/10 bg-white/[0.03] text-zinc-400"
-                : "border-cyan-300/15 bg-cyan-300/[0.07] text-cyan-100"
+                ? "border-white/10 bg-white/3 text-zinc-400"
+                : "border-cyan-300/15 bg-cyan-300/7 text-cyan-100"
             )}
           >
             {topic}
