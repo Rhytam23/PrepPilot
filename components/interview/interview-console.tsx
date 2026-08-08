@@ -84,12 +84,10 @@ React.useEffect(() => {
         }),
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to start interview")
-      }
-
+    const data = await response.json()
+if (data.sessionId) {
+  sessionId.current = data.sessionId
+}
       if (cancelled) return
 
       setMessages([
@@ -236,10 +234,36 @@ React.useEffect(() => {
     })
 
     const data = await response.json()
+    if (data.metrics) {
+  setMetrics(data.metrics)
+}
 
     if (!response.ok) {
       throw new Error(data.error || "Failed to submit answer")
     }
+    
+
+// Save submitted answer for early evaluation
+const lastInterviewerMessage = [...messages]
+  .reverse()
+  .find((message) => message.sender === "interviewer")
+
+setEvalLogs((prev) => [
+  ...prev,
+  {
+    topic: "Interview",
+    question: lastInterviewerMessage?.text || "Interview question",
+   isFollowUp: currentStep === "followup",
+    answer: answer,
+    score: {
+      depth: data.metrics?.depth ?? 0,
+      clarity: data.metrics?.clarity ?? 0,
+      communication: data.metrics?.communication ?? 0,
+    },
+    guidance: "",
+  },
+])
+setIsTyping(false)
 
     setIsTyping(false)
 
@@ -577,7 +601,7 @@ React.useEffect(() => {
                   <>
                     <Button 
                       onClick={triggerAnalysis} 
-                      disabled={evalLogs.length === 0 || isAnalyzing}
+                     disabled={isAnalyzing}
                       variant="outline" 
                       className="w-full border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs"
                     >
