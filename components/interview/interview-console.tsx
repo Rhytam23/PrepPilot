@@ -2,34 +2,22 @@
 
 import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowRight, Bot, ChevronRight, Mic2, Send, Sparkles, UserRound, Loader2 } from "lucide-react"
+import { Bot, ChevronRight, Mic2, Send, Sparkles, UserRound, Loader2, ShieldAlert, Cpu, Activity, User, BookOpen } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 import { candidates } from "@/data/candidates"
-import { getQuestionsForCandidate, Question } from "@/data/interview-questions"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { getQuestionsForCandidate } from "@/data/interview-questions"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { SiteHeader } from "@/components/layout/site-header"
 import { SiteFooter } from "@/components/layout/site-footer"
 import { cn } from "@/lib/utils"
+import type { EvalLog } from "@/types/candidate"
 
 type Message = {
   id: string
   sender: "interviewer" | "candidate"
   text: string
-}
-
-type EvalLog = {
-  topic: string
-  question: string
-  isFollowUp: boolean
-  answer: string
-  score: {
-    depth: number
-    clarity: number
-    communication: number
-  }
-  guidance: string
 }
 
 export default function InterviewConsole() {
@@ -41,10 +29,15 @@ export default function InterviewConsole() {
   const candidate = candidates.find((c) => c.id === candidateId) || candidates[0]
   const questions = React.useMemo(() => getQuestionsForCandidate(candidate.id), [candidate.id])
 
-  // Interview state
-  const sessionId = React.useRef(
-  `session-${candidateId}-${Date.now()}`
-)
+  // Session parameters (configured during Setup stage)
+  const [stage, setStage] = React.useState<"setup" | "chat">("setup")
+  const [selectedMode, setSelectedMode] = React.useState<"quick" | "technical" | "deep_dive" | "system_design" | "debugging" | "behavioral">("technical")
+  const [selectedPersonality, setSelectedPersonality] = React.useState<"mentor" | "interviewer" | "challenger" | "designer">("interviewer")
+  const [roleOverride, setRoleOverride] = React.useState(candidate.role)
+
+  // Interview state (React purity warning fix: lazy useState initializer)
+  const [sessionId] = React.useState(() => `session-${candidate.id}-${Date.now()}`)
+  
   const [currentIdx, setCurrentIdx] = React.useState(0)
   const [currentStep, setCurrentStep] = React.useState<"main" | "followup">("main")
   const [messages, setMessages] = React.useState<Message[]>([])
@@ -53,19 +46,29 @@ export default function InterviewConsole() {
   const [isAnalyzing, setIsAnalyzing] = React.useState(false)
   const [analysisStatus, setAnalysisStatus] = React.useState("")
 
-  // Metrics
-  const [metrics, setMetrics] = React.useState({ depth: 0, clarity: 0, communication: 0 })
+  // Adaptive properties returned from API
+  const [difficulty, setDifficulty] = React.useState<"EASY" | "MEDIUM" | "HARD" | "EXPERT">("MEDIUM")
+  const [probeState, setProbeState] = React.useState<"NORMAL" | "VERIFYING" | "DEEP_PROBE" | "CONFIRMED">("NORMAL")
+  const [understandingConfidence, setUnderstandingConfidence] = React.useState<"LOW" | "MODERATE" | "HIGH">("MODERATE")
+  const [riskSignal, setRiskSignal] = React.useState<"LOW" | "MODERATE" | "ELEVATED">("LOW")
+
+  // Heuristic metrics
+  const [metrics, setMetrics] = React.useState({
+    depth: 0,
+    clarity: 0,
+    communication: 0,
+    accuracy: 0,
+    reasoning: 0,
+    consistency: 0,
+    adaptability: 0
+  })
   const [evalLogs, setEvalLogs] = React.useState<EvalLog[]>([])
 
   const chatEndRef = React.useRef<HTMLDivElement>(null)
 
-// Initialize interview
-React.useEffect(() => {
-  if (questions.length === 0) return
-
-  let cancelled = false
-
-  const initializeInterview = async () => {
+  // Initialize interview logic upon Setup Launch
+  const startSession = async () => {
+    setStage("chat")
     setIsTyping(true)
 
     try {
@@ -75,11 +78,14 @@ React.useEffect(() => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          sessionId: sessionId.current,
+          sessionId,
+          mode: selectedMode,
+          personality: selectedPersonality,
+          role: roleOverride,
           candidate: {
             id: candidate.id,
             name: candidate.name,
-           jobRole: candidate.role,
+            jobRole: roleOverride,
           },
         }),
       })
@@ -90,7 +96,12 @@ React.useEffect(() => {
         throw new Error(data.error || "Failed to start interview")
       }
 
-      if (cancelled) return
+      if (data.metrics) setMetrics(data.metrics)
+      if (data.logs) setEvalLogs(data.logs)
+      if (data.difficulty) setDifficulty(data.difficulty)
+      if (data.probeState) setProbeState(data.probeState)
+      if (data.understandingConfidence) setUnderstandingConfidence(data.understandingConfidence)
+      if (data.riskSignal) setRiskSignal(data.riskSignal)
 
       setMessages([
         {
@@ -101,198 +112,179 @@ React.useEffect(() => {
       ])
     } catch (error) {
       console.error("Interview initialization failed:", error)
-
-      if (!cancelled) {
-        setMessages([
-          {
-            id: "initial-error",
-            sender: "interviewer",
-            text: "I couldn't start the interview. Please refresh and try again.",
-          },
-        ])
-      }
+      setMessages([
+        {
+          id: "initial-error",
+          sender: "interviewer",
+          text: "I couldn't start the interview. Please refresh and try again.",
+        },
+      ])
     } finally {
-      if (!cancelled) {
-        setIsTyping(false)
-      }
+      setIsTyping(false)
     }
   }
 
-  initializeInterview()
-
-  return () => {
-    cancelled = true
-  }
-}, [candidate, questions])
-
-// Scroll to bottom on new messages
-React.useEffect(() => {
-
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, isTyping])
-
-  // Evaluation engine
-  const evaluateResponse = (answer: string, questionObj: Question, isFollowUp: boolean): {
-    score: { depth: number; clarity: number; communication: number }
-    guidance: string
-  } => {
-    const cleanAnswer = answer.trim()
-    if (cleanAnswer.length < 10) {
-      return {
-        score: { depth: 15, clarity: 20, communication: 30 },
-        guidance: "The answer is too brief to evaluate. Please provide a more detailed engineering explanation with technical reasoning and concrete examples.",
-      }
+  // Scroll to bottom on new messages
+  React.useEffect(() => {
+    if (stage === "chat") {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
     }
+  }, [messages, isTyping, stage])
 
-    // 1. Evaluate DEPTH
-    let matchedConcepts: string[] = []
-    questionObj.expectedConcepts.forEach((concept) => {
-      const regex = new RegExp(`\\b${concept}\\b`, "i")
-      if (regex.test(cleanAnswer) || cleanAnswer.toLowerCase().includes(concept.toLowerCase())) {
-        matchedConcepts.push(concept)
-      }
-    })
-
-    const keywordRatio = questionObj.expectedConcepts.length > 0 
-      ? matchedConcepts.length / questionObj.expectedConcepts.length 
-      : 1
+  // DNA and Mastery helper calculation
+  const generateEndPayload = (finalMetrics: typeof metrics, finalLogs: EvalLog[], completed: boolean) => {
+    // 1. Mastery Map based on average topic scores
+    const masteryMap: Record<string, number> = {}
+    const topicCounts: Record<string, number> = {}
     
-    // Depth base is based on keyword coverage
-    let depthBase = keywordRatio * 85
-    // Length bonus (up to 15 points for deep answers)
-    const lengthBonus = Math.min(cleanAnswer.length / 350, 1) * 15
-    let depth = Math.min(100, Math.round(depthBase + lengthBonus))
-    if (cleanAnswer.length < 25) depth = Math.min(depth, 30)
-
-    // 2. Evaluate CLARITY
-    // Check for structure (paragraphs, line breaks) and transition keywords
-    const transitions = ["however", "therefore", "because", "since", "while", "whereas", "first", "second", "then", "next", "finally", "for instance", "for example", "contrast", "specifically"]
-    let transitionCount = 0
-    transitions.forEach((word) => {
-      const regex = new RegExp(`\\b${word}\\b`, "i")
-      if (regex.test(cleanAnswer)) transitionCount++
+    finalLogs.forEach(log => {
+      const avgScore = Math.round(
+        (log.score.depth + log.score.accuracy + log.score.reasoning + log.score.consistency + log.score.adaptability) / 5
+      )
+      if (!masteryMap[log.topic]) {
+        masteryMap[log.topic] = 0
+        topicCounts[log.topic] = 0
+      }
+      masteryMap[log.topic] += avgScore
+      topicCounts[log.topic] += 1
     })
 
-    const sentences = cleanAnswer.split(/[.!?]+/).filter(s => s.trim().length > 0)
-    let clarity = 60 // base clarity
-    if (transitionCount >= 2) clarity += 15
-    if (sentences.length >= 2) clarity += 15
-    if (cleanAnswer.includes("\n") || cleanAnswer.length > 200) clarity += 10
-    clarity = Math.min(100, clarity)
-    if (cleanAnswer.length < 25) clarity = Math.min(clarity, 35)
-
-    // 3. Evaluate COMMUNICATION
-    // Looks at tone words, examples, and overall formulation
-    const examples = ["for example", "e.g.", "such as", "like", "in my experience", "specifically", "scenario", "production"]
-    let hasExample = false
-    examples.forEach((word) => {
-      if (cleanAnswer.toLowerCase().includes(word)) hasExample = true
+    Object.keys(masteryMap).forEach(topic => {
+      masteryMap[topic] = Math.round(masteryMap[topic] / topicCounts[topic])
     })
 
-    let communication = 65 // base
-    if (hasExample) communication += 15
-    if (cleanAnswer.length > 120) communication += 10
-    if (cleanAnswer.length > 250) communication += 10
-    communication = Math.min(100, communication)
-    if (cleanAnswer.length < 25) communication = Math.min(communication, 40)
+    // 2. DNA Profile strongest/developing/weakest
+    const items = [
+      { name: "Technical Depth", val: finalMetrics.depth },
+      { name: "Logical Clarity", val: finalMetrics.clarity },
+      { name: "Communication", val: finalMetrics.communication },
+      { name: "Accuracy", val: finalMetrics.accuracy },
+      { name: "Reasoning", val: finalMetrics.reasoning },
+      { name: "Consistency", val: finalMetrics.consistency },
+      { name: "Adaptability", val: finalMetrics.adaptability }
+    ].sort((a, b) => b.val - a.val)
 
     return {
-      score: { depth, clarity, communication },
-      guidance: questionObj.improvementGuidance,
+      candidateId: candidate.id,
+      sessionId,
+      logs: finalLogs,
+      metrics: finalMetrics,
+      finalScore: Math.round((finalMetrics.depth + finalMetrics.accuracy + finalMetrics.reasoning + finalMetrics.consistency + finalMetrics.adaptability) / 5),
+      timestamp: new Date().toISOString(),
+      completed,
+      mode: selectedMode,
+      personality: selectedPersonality,
+      role: roleOverride,
+      difficulty,
+      understandingConfidence,
+      riskSignal,
+      dnaProfile: {
+        strongest: items[0].name,
+        developing: items[Math.floor(items.length / 2)].name,
+        weakest: items[items.length - 1].name
+      },
+      masteryMap
     }
   }
 
   // Handle Answer Submission
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault()
+    e.preventDefault()
 
-  if (!userInput.trim() || isTyping || isAnalyzing || isFinished) {
-    return
-  }
-
-  const answer = userInput.trim()
-
-  // Show candidate's answer immediately
-  const newUserMsg: Message = {
-    id: `candidate-msg-${Date.now()}`,
-    sender: "candidate",
-    text: answer,
-  }
-
-  setMessages((prev) => [...prev, newUserMsg])
-  setUserInput("")
-  setIsTyping(true)
-
-  try {
-    const response = await fetch("/api/interview", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        sessionId: sessionId.current,
-        message: answer,
-      }),
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.error || "Failed to submit answer")
+    if (!userInput.trim() || isTyping || isAnalyzing || isFinished) {
+      return
     }
 
-    setIsTyping(false)
+    const answer = userInput.trim()
 
-    // Display interviewer response from the API
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `interviewer-msg-${Date.now()}`,
-        sender: "interviewer",
-        text: data.reply,
-      },
-    ])
-
-    // API returns done=true when the interview is complete
-    if (data.done) {
- 
-  setIsTyping(false)
-
-  if (data.feedback) {
-    sessionStorage.setItem(
-      "interviewFeedback",
-      JSON.stringify(data.feedback)
-    )
-  }
-
-  router.push(`/feedback?candidate=${candidateId}`)
-
-  return
-}
-
-    // Keep the UI progress in sync with the API flow.
-    if (currentStep === "main") {
-      setCurrentStep("followup")
-    } else if (currentIdx < questions.length - 1) {
-      setCurrentIdx((prev) => prev + 1)
-      setCurrentStep("main")
+    // Show candidate's answer immediately
+    const newUserMsg: Message = {
+      id: `candidate-msg-${Date.now()}`,
+      sender: "candidate",
+      text: answer,
     }
-  } catch (error) {
-    console.error("Interview submission failed:", error)
 
-    setIsTyping(false)
+    setMessages((prev) => [...prev, newUserMsg])
+    setUserInput("")
+    setIsTyping(true)
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `error-${Date.now()}`,
-        sender: "interviewer",
-        text: "I couldn't process that answer. Please try submitting again.",
-      },
-    ])
+    try {
+      const response = await fetch("/api/interview", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId,
+          message: answer,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to submit answer")
+      }
+
+      setIsTyping(false)
+
+      // Display interviewer response from the API
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `interviewer-msg-${Date.now()}`,
+          sender: "interviewer",
+          text: data.reply,
+        },
+      ])
+
+      // Synchronize metrics and adaptive state variables
+      if (data.metrics) setMetrics(data.metrics)
+      if (data.logs) setEvalLogs(data.logs)
+      if (data.difficulty) setDifficulty(data.difficulty)
+      if (data.probeState) setProbeState(data.probeState)
+      if (data.understandingConfidence) setUnderstandingConfidence(data.understandingConfidence)
+      if (data.riskSignal) setRiskSignal(data.riskSignal)
+
+      // API returns done=true when the interview is complete
+      if (data.done) {
+        setIsTyping(false)
+        const finalMetrics = data.metrics || metrics
+        const finalLogs = data.logs || evalLogs
+
+        const sessionPayload = generateEndPayload(finalMetrics, finalLogs, true)
+        sessionStorage.setItem("preppilot_session", JSON.stringify(sessionPayload))
+        
+        // Append results to progress history for learning paths
+        const historyJson = localStorage.getItem("preppilot_history")
+        const history = historyJson ? JSON.parse(historyJson) : []
+        history.push(sessionPayload)
+        localStorage.setItem("preppilot_history", JSON.stringify(history))
+
+        router.push(`/feedback?candidate=${candidate.id}`)
+        return
+      }
+
+      // Keep the UI progress in sync with the API flow.
+      if (currentStep === "main") {
+        setCurrentStep("followup")
+      } else if (currentIdx < questions.length - 1) {
+        setCurrentIdx((prev) => prev + 1)
+        setCurrentStep("main")
+      }
+    } catch (error) {
+      console.error("Interview submission failed:", error)
+      setIsTyping(false)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          sender: "interviewer",
+          text: "I couldn't process that answer. Please try submitting again.",
+        },
+      ])
+    }
   }
-}
-
 
   // End Interview early or wrap up
   const triggerAnalysis = () => {
@@ -322,16 +314,14 @@ React.useEffect(() => {
         clearInterval(interval)
 
         // Save session state to sessionStorage
-        const finalScore = Math.round((metrics.depth + metrics.clarity + metrics.communication) / 3)
-        const sessionPayload = {
-          candidateId: candidate.id,
-          logs: evalLogs,
-          metrics,
-          finalScore,
-          timestamp: new Date().toISOString(),
-        }
-
+        const sessionPayload = generateEndPayload(metrics, evalLogs, false)
         sessionStorage.setItem("preppilot_session", JSON.stringify(sessionPayload))
+        
+        // Save to history
+        const historyJson = localStorage.getItem("preppilot_history")
+        const history = historyJson ? JSON.parse(historyJson) : []
+        history.push(sessionPayload)
+        localStorage.setItem("preppilot_history", JSON.stringify(history))
         
         // Redirect to feedback page
         router.push(`/feedback?candidate=${candidate.id}`)
@@ -339,7 +329,121 @@ React.useEffect(() => {
     }, 1200)
   }
 
-  const isFinished = messages[messages.length - 1]?.text.includes("completes our technical interview")
+  const isFinished = messages[messages.length - 1]?.text.includes("completes our technical interview") || messages[messages.length - 1]?.text.includes("Interview completed")
+
+  if (stage === "setup") {
+    return (
+      <div className="dark min-h-svh bg-black text-white flex flex-col justify-between">
+        <SiteHeader />
+        <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-10 flex flex-col gap-8 justify-center">
+          <div className="text-center max-w-2xl mx-auto">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-cyan-400/20 bg-cyan-400/10 text-xs font-semibold text-cyan-300 mb-4 tracking-wider uppercase">
+              <Cpu className="size-3.5" /> PrepPilot Engine v0.8
+            </span>
+            <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-white">
+              Adaptive Interview Setup
+            </h1>
+            <p className="mt-3 text-zinc-400 text-sm sm:text-base">
+              Customize the evaluation context, interviewer personality, and target engineering role constraints before launching your session.
+            </p>
+          </div>
+
+          <div className="grid gap-6 sm:grid-cols-2">
+            {/* Mode Select */}
+            <Card className="border-white/10 bg-zinc-950/70 p-5 flex flex-col justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
+                  <Activity className="size-4" /> 1. Interview Mode
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1">Select the architectural focus and question format.</p>
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  {[
+                    { id: "technical", label: "Technical" },
+                    { id: "deep_dive", label: "Deep Dive" },
+                    { id: "system_design", label: "System Design" },
+                    { id: "debugging", label: "Debugging" },
+                    { id: "behavioral", label: "Behavioral" },
+                    { id: "quick", label: "Quick Check" },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => setSelectedMode(m.id as "quick" | "technical" | "deep_dive" | "system_design" | "debugging" | "behavioral")}
+                      className={cn(
+                        "py-2 px-2.5 rounded-lg border text-xs font-medium transition",
+                        selectedMode === m.id
+                          ? "border-cyan-300 bg-cyan-400/10 text-cyan-200"
+                          : "border-white/5 bg-white/3 text-zinc-400 hover:bg-white/5 hover:border-white/10"
+                      )}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </Card>
+
+            {/* Personality Select */}
+            <Card className="border-white/10 bg-zinc-950/70 p-5 flex flex-col justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
+                  <User className="size-4" /> 2. Interviewer Style
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1">Change the questioning behavior and feedback tone.</p>
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  {[
+                    { id: "interviewer", label: "Interviewer", desc: "Professional, balanced" },
+                    { id: "mentor", label: "Mentor", desc: "Supportive, guided" },
+                    { id: "challenger", label: "Challenger", desc: "Skeptical, rigorous" },
+                    { id: "designer", label: "System Designer", desc: "Architectural focus" },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setSelectedPersonality(p.id as "mentor" | "interviewer" | "challenger" | "designer")}
+                      className={cn(
+                        "py-2 px-2.5 rounded-lg border text-xs font-medium flex flex-col items-center justify-center transition",
+                        selectedPersonality === p.id
+                          ? "border-cyan-300 bg-cyan-400/10 text-cyan-200"
+                          : "border-white/5 bg-white/3 text-zinc-400 hover:bg-white/5 hover:border-white/10"
+                      )}
+                    >
+                      <span>{p.label}</span>
+                      <span className="text-[9px] text-zinc-500 font-normal mt-0.5">{p.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Role Override Form */}
+          <Card className="border-white/10 bg-zinc-950/70 p-5">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
+              <BookOpen className="size-4" /> 3. Target Engineering Role
+            </h3>
+            <p className="text-xs text-zinc-400 mt-1">Tailors terminology criteria to the candidate&apos;s specialization.</p>
+            <input
+              type="text"
+              value={roleOverride}
+              onChange={(e) => setRoleOverride(e.target.value)}
+              placeholder="e.g. Backend Software Engineer"
+              className="mt-4 w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
+            />
+          </Card>
+
+          {/* Start CTA */}
+          <Button
+            onClick={startSession}
+            size="lg"
+            className="w-full bg-cyan-400 text-black hover:bg-cyan-500 font-bold tracking-wider py-4 shadow-lg shadow-cyan-900/20"
+          >
+            Launch Interview Session
+            <ChevronRight className="size-4" />
+          </Button>
+        </main>
+        <SiteFooter />
+      </div>
+    )
+  }
 
   return (
     <div className="dark min-h-svh bg-black text-white flex flex-col justify-between">
@@ -375,11 +479,14 @@ React.useEffect(() => {
               <h1 className="text-lg font-semibold tracking-tight text-white flex items-center gap-2">
                 PrepPilot Interview Board
                 <span className="text-xs font-normal border border-cyan-400/20 bg-cyan-400/10 text-cyan-300 px-2 py-0.5 rounded-full">
-                  Live
+                  Adaptive
+                </span>
+                <span className="text-xs font-normal border border-yellow-400/20 bg-yellow-400/10 text-yellow-300 px-2 py-0.5 rounded-full">
+                  {difficulty}
                 </span>
               </h1>
               <p className="text-xs text-zinc-400">
-                Session with <span className="text-white font-medium">{candidate.name}</span> &bull; {candidate.role}
+                Session with <span className="text-white font-medium">{candidate.name}</span> &bull; {roleOverride} ({selectedMode.toUpperCase()} mode)
               </p>
             </div>
           </div>
@@ -403,9 +510,9 @@ React.useEffect(() => {
         {/* Core Layout Grid */}
         <div className="grid gap-6 lg:grid-cols-[1fr_18rem] flex-1">
           {/* Chat Console Section */}
-          <div className="flex flex-col border border-white/10 rounded-xl bg-zinc-950/70 p-4 shadow-2xl overflow-hidden min-h-112.5">
+          <div className="flex flex-col border border-white/10 rounded-xl bg-zinc-950/70 p-4 shadow-2xl overflow-hidden min-h-[450px]">
             {/* Scrollable messages container */}
-            <div className="flex-1 overflow-y-auto space-y-4 pr-2 max-h-95 min-h-75">
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2 max-h-[380px] min-h-[300px]">
               {messages.map((msg: Message) => {
                 const isAI = msg.sender === "interviewer"
                 return (
@@ -432,7 +539,7 @@ React.useEffect(() => {
                         {isAI ? <Bot className="size-3.5" /> : <UserRound className="size-3.5" />}
                       </span>
                       <span className="text-xs font-semibold text-white">
-                        {isAI ? "AI Interviewer" : candidate.name}
+                        {isAI ? `AI Interviewer (${selectedPersonality.toUpperCase()})` : candidate.name}
                       </span>
                     </div>
                     <p className="text-sm leading-6 whitespace-pre-line text-zinc-300">
@@ -466,7 +573,7 @@ React.useEffect(() => {
                   placeholder={
                     isFinished 
                       ? "Interview completed. Please click 'Generate Performance Report'." 
-                      : `Type your explanation for ${questions[currentIdx]?.topic || "focus area"}...`
+                      : `Explain your approach for ${questions[currentIdx]?.topic || "focus area"}...`
                   }
                   disabled={isFinished || isTyping || isAnalyzing}
                   className="w-full bg-black/60 border border-white/10 rounded-lg py-2 px-3 pr-10 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 resize-none h-16 min-h-16 max-h-24 disabled:opacity-50"
@@ -498,54 +605,69 @@ React.useEffect(() => {
                   Live Session Signals
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-4 flex flex-col sm:grid sm:grid-cols-3 lg:flex lg:flex-col gap-4">
-                <div>
-                  <div className="mb-2 flex items-center justify-between text-xs">
-                    <span className="text-zinc-500">Depth</span>
-                    <span className={cn("font-medium", metrics.depth > 70 ? "text-emerald-300" : metrics.depth > 40 ? "text-cyan-300" : "text-zinc-400")}>
-                      {metrics.depth > 0 ? `${metrics.depth}%` : "Awaiting response"}
-                    </span>
+              <CardContent className="p-4 flex flex-col gap-3">
+                {/* 7 Core Dimensions */}
+                {[
+                  { name: "Depth", val: metrics.depth, grad: "from-cyan-400 to-emerald-400" },
+                  { name: "Clarity", val: metrics.clarity, grad: "from-cyan-400 to-white" },
+                  { name: "Communication", val: metrics.communication, grad: "from-cyan-400 to-violet-400" },
+                  { name: "Accuracy", val: metrics.accuracy, grad: "from-emerald-400 to-cyan-400" },
+                  { name: "Reasoning", val: metrics.reasoning, grad: "from-cyan-400 to-yellow-400" },
+                  { name: "Consistency", val: metrics.consistency, grad: "from-violet-400 to-emerald-400" },
+                  { name: "Adaptability", val: metrics.adaptability, grad: "from-yellow-400 to-cyan-400" }
+                ].map(dim => (
+                  <div key={dim.name}>
+                    <div className="mb-1.5 flex items-center justify-between text-[11px]">
+                      <span className="text-zinc-500">{dim.name}</span>
+                      <span className={cn("font-medium", dim.val > 70 ? "text-emerald-300" : dim.val > 40 ? "text-cyan-300" : "text-zinc-500")}>
+                        {dim.val > 0 ? `${dim.val}%` : "Awaiting"}
+                      </span>
+                    </div>
+                    <div className="h-1 rounded-full bg-white/10 overflow-hidden">
+                      <div 
+                        className={cn("h-full bg-gradient-to-r transition-all duration-500", dim.grad)} 
+                        style={{ width: `${dim.val}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div 
-                      className="h-full bg-linear-to-r from-cyan-400 to-emerald-400 transition-all duration-500" 
-                      style={{ width: `${metrics.depth}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between text-xs">
-                    <span className="text-zinc-500">Clarity</span>
-                    <span className={cn("font-medium", metrics.clarity > 70 ? "text-emerald-300" : metrics.clarity > 40 ? "text-cyan-300" : "text-zinc-400")}>
-                      {metrics.clarity > 0 ? `${metrics.clarity}%` : "Awaiting response"}
-                    </span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div 
-                      className="h-full bg-linear-to-r from-cyan-400 to-white transition-all duration-500" 
-                      style={{ width: `${metrics.clarity}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between text-xs">
-                    <span className="text-zinc-500">Communication</span>
-                    <span className={cn("font-medium", metrics.communication > 70 ? "text-emerald-300" : metrics.communication > 40 ? "text-cyan-300" : "text-zinc-400")}>
-                      {metrics.communication > 0 ? `${metrics.communication}%` : "Awaiting response"}
-                    </span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div 
-                      className="h-full bg-linear-to-r from-cyan-400 to-violet-400 transition-all duration-500" 
-                      style={{ width: `${metrics.communication}%` }}
-                    />
-                  </div>
-                </div>
+                ))}
               </CardContent>
             </Card>
 
+            {/* Authenticity Verification Info */}
+            <Card className="border-white/10 bg-zinc-950/70 p-4 shadow-2xl flex flex-col gap-3">
+              <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-1.5">
+                <ShieldAlert className="size-3.5 text-cyan-400" />
+                Adaptive Verification
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-center">
+                <div className="rounded border border-white/5 bg-white/3 p-2">
+                  <p className="text-[9px] text-zinc-500 uppercase">Understanding</p>
+                  <p className={cn("text-xs font-bold mt-1", 
+                    understandingConfidence === "HIGH" ? "text-emerald-400" : 
+                    understandingConfidence === "MODERATE" ? "text-cyan-400" : "text-yellow-400"
+                  )}>
+                    {understandingConfidence}
+                  </p>
+                </div>
+                <div className="rounded border border-white/5 bg-white/3 p-2">
+                  <p className="text-[9px] text-zinc-500 uppercase">Assistance Risk</p>
+                  <p className={cn("text-xs font-bold mt-1", 
+                    riskSignal === "LOW" ? "text-emerald-400" : 
+                    riskSignal === "MODERATE" ? "text-yellow-400" : "text-red-400"
+                  )}>
+                    {riskSignal}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded border border-cyan-500/20 bg-cyan-500/5 p-2.5">
+                <p className="text-[10px] text-zinc-400 leading-normal">
+                  Verification State: <span className="font-semibold text-white">{probeState}</span>
+                </p>
+              </div>
+            </Card>
+
+            {/* Target focus topic */}
             <Card className="border-white/10 bg-zinc-950/70 p-4 shadow-2xl flex-1 flex flex-col justify-between">
               <div className="space-y-3">
                 <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-1.5">
@@ -559,7 +681,7 @@ React.useEffect(() => {
                   <p className="text-xs text-zinc-400 mt-1 leading-5">
                     {currentStep === "main" 
                       ? "Present a detailed high-level explanation. Mention architectural choices, trade-offs, and expected pitfalls."
-                      : "Expand on your previous logic. AI is asking a critical follow-up questions to probe context limits."}
+                      : "Expand on your previous logic. The AI is asking a critical follow-up question to probe context limits."}
                   </p>
                 </div>
               </div>
@@ -584,7 +706,7 @@ React.useEffect(() => {
                       Finish & Evaluate Early
                     </Button>
                     <p className="text-[10px] text-zinc-500 text-center leading-normal">
-                      Ending early evaluates you based on the questions you've answered so far.
+                      Ending early evaluates you based on the questions you&apos;ve answered so far.
                     </p>
                   </>
                 )}

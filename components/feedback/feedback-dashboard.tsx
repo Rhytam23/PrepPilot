@@ -1,69 +1,98 @@
 "use client"
 
 import * as React from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, Award, CheckCircle2, ChevronDown, ChevronUp, AlertCircle, RefreshCw, BookOpen, BrainCircuit } from "lucide-react"
+import { useSearchParams } from "next/navigation"
+import { ArrowLeft, Award, CheckCircle2, ChevronDown, ChevronUp, AlertCircle, RefreshCw, BookOpen, BrainCircuit, ShieldAlert, Cpu, BarChart3, TrendingUp } from "lucide-react"
 import Link from "next/link"
 
 import { candidates } from "@/data/candidates"
 import { SiteHeader } from "@/components/layout/site-header"
 import { SiteFooter } from "@/components/layout/site-footer"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-
-type EvalLog = {
-  topic: string
-  question: string
-  isFollowUp: boolean
-  answer: string
-  score: {
-    depth: number
-    clarity: number
-    communication: number
-  }
-  guidance: string
-}
-
-type SessionPayload = {
-  candidateId: string
-  logs: EvalLog[]
-  metrics: {
-    depth: number
-    clarity: number
-    communication: number
-  }
-  finalScore: number
-  timestamp: string
-}
+import type { EvalLog, SessionPayload } from "@/types/candidate"
 
 export default function FeedbackDashboard() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const candidateId = searchParams.get("candidate") || "CAND-001"
 
-  const [session, setSession] = React.useState<SessionPayload | null>(null)
-  const [expandedIdx, setExpandedIdx] = React.useState<Record<number, boolean>>({})
-
-  // Find candidate details
-  const candidate = candidates.find((c) => c.id === candidateId) || candidates[0]
-
-  // Retrieve session data
-  React.useEffect(() => {
+  // Load initial session state safely from sessionStorage on mount (React 19 compliant)
+  const [session, setSession] = React.useState<SessionPayload | null>(() => {
+    if (typeof window === "undefined") return null
     try {
       const stored = sessionStorage.getItem("preppilot_session")
       if (stored) {
         const parsed = JSON.parse(stored) as SessionPayload
         if (parsed.candidateId === candidateId) {
-          setSession(parsed)
-          // Default expand the first item
-          setExpandedIdx({ 0: true })
+          return parsed
         }
       }
     } catch (e) {
       console.error("Failed to parse sessionStorage payload", e)
     }
-  }, [candidateId])
+    return null
+  })
+
+  // Load historical progression sessions from localStorage (React 19 compliant)
+  const [history, setHistory] = React.useState<SessionPayload[]>(() => {
+    if (typeof window === "undefined") return []
+    try {
+      const historyJson = localStorage.getItem("preppilot_history")
+      if (historyJson) {
+        const parsed = JSON.parse(historyJson) as SessionPayload[]
+        return parsed.filter(h => h.candidateId === candidateId)
+      }
+    } catch (e) {
+      console.error("Failed to load history:", e)
+    }
+    return []
+  })
+
+  const [expandedIdx, setExpandedIdx] = React.useState<Record<number, boolean>>({ 0: true })
+
+  // Find candidate details
+  const candidate = candidates.find((c) => c.id === candidateId) || candidates[0]
+
+  // Track candidateId parameter changes in render phase (React 19 compliant)
+  const [prevCandidateId, setPrevCandidateId] = React.useState(candidateId)
+  if (candidateId !== prevCandidateId) {
+    setPrevCandidateId(candidateId)
+    
+    // Sync session state
+    let newSession: SessionPayload | null = null
+    if (typeof window !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem("preppilot_session")
+        if (stored) {
+          const parsed = JSON.parse(stored) as SessionPayload
+          if (parsed.candidateId === candidateId) {
+            newSession = parsed
+          }
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    setSession(newSession)
+    
+    // Sync history state
+    let newHistory: SessionPayload[] = []
+    if (typeof window !== "undefined") {
+      try {
+        const historyJson = localStorage.getItem("preppilot_history")
+        if (historyJson) {
+          const parsed = JSON.parse(historyJson) as SessionPayload[]
+          newHistory = parsed.filter(h => h.candidateId === candidateId)
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    setHistory(newHistory)
+    
+    setExpandedIdx({ 0: true })
+  }
 
   const toggleExpand = (idx: number) => {
     setExpandedIdx((prev: Record<number, boolean>) => ({ ...prev, [idx]: !prev[idx] }))
@@ -81,7 +110,7 @@ export default function FeedbackDashboard() {
             </div>
             <h2 className="text-xl font-semibold text-white mb-2">No Active Session Found</h2>
             <p className="text-zinc-400 text-sm mb-6">
-              We couldn't retrieve any recent interview performance data for {candidate.name}. Please complete an interview first.
+              We couldn&apos;t retrieve any recent interview performance data for {candidate.name}. Please complete an interview first.
             </p>
             <div className="flex flex-col gap-2">
               <Link href={`/interview?candidate=${candidate.id}`}>
@@ -107,10 +136,11 @@ export default function FeedbackDashboard() {
     const depth = session.metrics.depth
     const clarity = session.metrics.clarity
     const communication = session.metrics.communication
+    const reasoning = session.metrics.reasoning
 
-    let strengths: string[] = []
-    let gaps: string[] = []
-    let nextSteps: string[] = []
+    const strengths: string[] = []
+    const gaps: string[] = []
+    const nextSteps: string[] = []
 
     // Evaluate Strengths
     if (depth >= 75) {
@@ -128,31 +158,38 @@ export default function FeedbackDashboard() {
     if (communication >= 75) {
       strengths.push("Production readiness: Supplemented answers with concrete real-world context, scenarios, or code metrics.")
     }
+    
+    if (reasoning >= 75) {
+      strengths.push("Strong Analytical Reasoning: Solved architectural trade-offs systematically and explained why competing options were ruled out.")
+    }
 
     // Evaluate Gaps & Next Steps based on Candidate specialization
-    if (candidate.role === "Frontend Engineer") {
+    if (candidate.role === "Frontend Engineer" || session.role.toLowerCase().includes("frontend")) {
       if (depth < 75) {
         gaps.push("React State boundaries: Needs to elaborate further on controlled render loops and state synchronization side effects.")
         nextSteps.push("Deep-dive React documentation regarding reconciliation, key indexes, and state scheduling.")
       }
       gaps.push("Advanced Web Vitals: Missed specific details about browser paint rendering lifecycles (LCP/CLS optimizations).")
       nextSteps.push("Study Next.js custom performance metrics, font-optimization APIs, and structural CLS debugging in Chrome DevTools.")
-    } else if (candidate.role === "Backend Engineer") {
+    } else if (candidate.role === "Backend Engineer" || session.role.toLowerCase().includes("backend")) {
       if (depth < 75) {
         gaps.push("Distributed locks: Did not mention Redis transaction parameters or Lua scripts for atomic rate limiting checks.")
         nextSteps.push("Experiment with write atomic primitives using Redis Lua scripting or Zookeeper lease locks.")
       }
       gaps.push("Cache stampede triggers: Lacks explicit solutions to protect backend databases when cache keys drop concurrently.")
       nextSteps.push("Review cache-aside synchronization algorithms, specifically mutex locks, and distributed trace observability.")
-    } else if (candidate.role === "Full Stack Engineer") {
+    } else if (candidate.role === "Full Stack Engineer" || session.role.toLowerCase().includes("full stack")) {
       gaps.push("JWT Cookie parameters: Needs stronger security constraints (HttpOnly, SameSite, Secure flags) to defend auth state.")
       nextSteps.push("Implement mock Auth middleware in Next.js using custom secure HTTP cookies and csrf validation.")
       nextSteps.push("Read up on scaling persistent WebSocket connection adapters over Redis PubSub backplanes.")
     } else {
-      // Software Engineer Intern
-      gaps.push("Call stack mechanics: Lacks full understanding of JS task scheduling queues (microtask loop priority).")
-      nextSteps.push("Create visual tracing diagrams of promise execution hierarchies vs browser timeout triggers.")
-      nextSteps.push("Study basic search algorithm pointer mutations (binary boundaries log-n limits).")
+      // General Software Engineer
+      if (depth < 70) {
+        gaps.push("Call stack mechanics: Lacks full understanding of JS task scheduling queues (microtask loop priority).")
+        nextSteps.push("Create visual tracing diagrams of promise execution hierarchies vs browser timeout triggers.")
+      }
+      gaps.push("Edge-case exceptions: Fails to explain failover behaviors or state corruption handling under scale partitions.")
+      nextSteps.push("Study basic search algorithm pointer mutations (binary boundaries log-n limits) and transactional state.")
     }
 
     // Always provide general steps
@@ -167,6 +204,32 @@ export default function FeedbackDashboard() {
   }
 
   const feedbackDetails = getFeedbackDetails()
+
+  // Calculate DNA Profile (Strongest, Developing, Weakest)
+  const dnaStrongest = session.dnaProfile?.strongest || "Depth"
+  const dnaDeveloping = session.dnaProfile?.developing || "Reasoning"
+  const dnaWeakest = session.dnaProfile?.weakest || "Consistency"
+
+  // Count detected contradictions
+  const contradictionsCount = session.logs.filter(log => log.score.consistency < 50).length
+
+  // Build progression comparison list
+  const getProgressionScores = () => {
+    if (history.length > 1) {
+      return history.map((h, i) => ({
+        index: i + 1,
+        score: h.finalScore,
+        mode: h.mode,
+        date: new Date(h.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      }))
+    }
+    // Baseline diagnostic mockup if history is empty
+    return [
+      { index: 1, score: 62, mode: "technical", date: "Baseline Diagnostic" },
+      { index: 2, score: session.finalScore, mode: session.mode, date: "Latest Session" }
+    ]
+  }
+  const progression = getProgressionScores()
 
   return (
     <div className="dark min-h-svh bg-black text-white flex flex-col justify-between">
@@ -197,7 +260,7 @@ export default function FeedbackDashboard() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white">Performance Evaluation Report</h1>
             <p className="text-sm text-zinc-400 mt-1">
-              Readiness profile for <span className="text-white font-medium">{candidate.name}</span> &bull; {candidate.role}
+              Readiness profile for <span className="text-white font-medium">{candidate.name}</span> &bull; {session.role} ({session.mode.toUpperCase()} mode)
             </p>
           </div>
           <Link href={`/interview?candidate=${candidate.id}`}>
@@ -250,64 +313,178 @@ export default function FeedbackDashboard() {
             </div>
 
             <div className="mt-6 border-t border-white/10 pt-4 w-full">
-              <p className="text-xs text-zinc-400">
+              <p className="text-xs text-zinc-400 leading-relaxed">
                 {session.finalScore >= 80 
-                  ? "Highly prepared. Shows strong depth and communication." 
+                  ? "Highly prepared. Pushes boundaries of system scale and maintains logic consistency." 
                   : session.finalScore >= 60 
-                    ? "Moderate readiness. Solid basics with minor focus areas." 
-                    : "Needs preparation. Focus on recommended next steps."}
+                    ? "Moderate readiness. Solid basics with minor focus limits or terminology gaps." 
+                    : "Needs preparation. Focus on textbook optimization gaps and practice retry steps."}
               </p>
             </div>
           </Card>
 
-          {/* Metrics breakdown sliders */}
+          {/* Metrics breakdown sliders (7 Dimensions) */}
           <Card className="border-white/10 bg-zinc-950/70 p-6 shadow-2xl">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 mb-6 flex items-center gap-1.5">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 mb-5 flex items-center gap-1.5">
               <Award className="size-4 text-cyan-400" />
-              Dimension Breakdown
+              Engineering Dimension Breakdown
             </h3>
-            <div className="space-y-6 md:grid md:grid-cols-3 md:space-y-0 md:gap-6 lg:flex lg:flex-col lg:space-y-6">
-              <div>
-                <div className="mb-2 flex items-center justify-between text-sm">
-                  <span className="text-zinc-300 font-medium">Technical Depth</span>
-                  <span className="text-cyan-300 font-semibold">{session.metrics.depth}%</span>
+            <div className="grid gap-5 sm:grid-cols-2">
+              {[
+                { name: "Technical Depth", val: session.metrics.depth, desc: "Trade-offs and architectural boundaries knowledge" },
+                { name: "Technical Accuracy", val: session.metrics.accuracy, desc: "Correct syntax usage and concept definitions" },
+                { name: "Logical Clarity", val: session.metrics.clarity, desc: "Step-by-step reasoning structure and layout clarity" },
+                { name: "Communication", val: session.metrics.communication, desc: "Vocabulary professionalism and production examples" },
+                { name: "Analytical Reasoning", val: session.metrics.reasoning, desc: "Data structures logic and debugging capabilities" },
+                { name: "Decision Consistency", val: session.metrics.consistency, desc: "Reconciliation of previous tech stack selections" },
+                { name: "Architectural Adaptability", val: session.metrics.adaptability, desc: "Refactoring flexibility under scale transformations" }
+              ].map(m => (
+                <div key={m.name} className="flex flex-col">
+                  <div className="flex items-center justify-between text-xs font-medium mb-1">
+                    <span className="text-zinc-300">{m.name}</span>
+                    <span className="text-cyan-300">{m.val}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                    <div className="h-full bg-linear-to-r from-cyan-400 to-emerald-400" style={{ width: `${m.val}%` }} />
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-1 leading-normal">{m.desc}</p>
                 </div>
-                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                  <div className="h-full bg-linear-to-r from-cyan-400 to-emerald-400" style={{ width: `${session.metrics.depth}%` }} />
-                </div>
-                <p className="text-xs text-zinc-500 mt-1.5">
-                  Evaluates use of technical keywords, terminology accuracy, and knowledge of tradeoffs.
-                </p>
-              </div>
-
-              <div>
-                <div className="mb-2 flex items-center justify-between text-sm">
-                  <span className="text-zinc-300 font-medium">Logical Clarity</span>
-                  <span className="text-cyan-300 font-semibold">{session.metrics.clarity}%</span>
-                </div>
-                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                  <div className="h-full bg-linear-to-r from-cyan-400 to-white" style={{ width: `${session.metrics.clarity}%` }} />
-                </div>
-                <p className="text-xs text-zinc-500 mt-1.5">
-                  Evaluates answer structure, step-by-step layout reasoning, and syntax transition words.
-                </p>
-              </div>
-
-              <div>
-                <div className="mb-2 flex items-center justify-between text-sm">
-                  <span className="text-zinc-300 font-medium">Communication Quality</span>
-                  <span className="text-cyan-300 font-semibold">{session.metrics.communication}%</span>
-                </div>
-                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                  <div className="h-full bg-linear-to-r from-cyan-400 to-violet-400" style={{ width: `${session.metrics.communication}%` }} />
-                </div>
-                <p className="text-xs text-zinc-500 mt-1.5">
-                  Evaluates thoroughness, tone professionalism, and presence of concrete production examples.
-                </p>
-              </div>
+              ))}
             </div>
           </Card>
         </div>
+
+        {/* Authenticity Verification Box */}
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card className="border-white/10 bg-zinc-950/70 p-5 shadow-2xl">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300 mb-4 flex items-center gap-2">
+              <ShieldAlert className="size-4 text-cyan-300" />
+              Understanding Verification Summary
+            </h3>
+            <div className="grid grid-cols-3 gap-3 mb-4 text-center">
+              <div className="rounded border border-white/5 bg-white/3 p-2">
+                <p className="text-[9px] text-zinc-500 uppercase">Verifications</p>
+                <p className="text-sm font-bold text-white mt-1">
+                  {session.logs.filter(l => l.probeState === "CONFIRMED" || l.probeState === "DEEP_PROBE").length} Checked
+                </p>
+              </div>
+              <div className="rounded border border-white/5 bg-white/3 p-2">
+                <p className="text-[9px] text-zinc-500 uppercase">Confidence</p>
+                <p className={cn("text-sm font-bold mt-1", 
+                  session.understandingConfidence === "HIGH" ? "text-emerald-400" :
+                  session.understandingConfidence === "MODERATE" ? "text-cyan-400" : "text-yellow-400"
+                )}>
+                  {session.understandingConfidence}
+                </p>
+              </div>
+              <div className="rounded border border-white/5 bg-white/3 p-2">
+                <p className="text-[9px] text-zinc-500 uppercase">Assistance Risk</p>
+                <p className={cn("text-sm font-bold mt-1", 
+                  session.riskSignal === "LOW" ? "text-emerald-400" :
+                  session.riskSignal === "MODERATE" ? "text-yellow-400" : "text-red-400"
+                )}>
+                  {session.riskSignal}
+                </p>
+              </div>
+            </div>
+            <div className="rounded border border-cyan-500/25 bg-cyan-500/5 p-3.5 text-xs text-zinc-300 leading-relaxed space-y-2">
+              <p>
+                * **Confidence Rating:** Indicates the consistency and specific depth verified when the system launched challenges or counterfactual questions.
+              </p>
+              <p>
+                * **Contradiction Signal:** Checked {contradictionsCount} contradictions in design patterns. The interviewer evaluated your ability to defend stack choices.
+              </p>
+            </div>
+          </Card>
+
+          {/* DNA Profile Box */}
+          <Card className="border-white/10 bg-zinc-950/70 p-5 shadow-2xl flex flex-col justify-between">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 mb-4 flex items-center gap-2">
+                <Cpu className="size-4 text-cyan-400" />
+                Session Interview DNA
+              </h3>
+              <p className="text-xs text-zinc-400 mb-4 leading-normal">
+                Based on your behavior patterns, scaling responses, and adaptability under pressure.
+              </p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-white/5 pb-2 text-xs">
+                  <span className="text-zinc-500 font-medium flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-emerald-400" /> Strongest Attribute:
+                  </span>
+                  <span className="font-bold text-white">{dnaStrongest}</span>
+                </div>
+                <div className="flex items-center justify-between border-b border-white/5 pb-2 text-xs">
+                  <span className="text-zinc-500 font-medium flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-cyan-400" /> Developing Attribute:
+                  </span>
+                  <span className="font-bold text-white">{dnaDeveloping}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-zinc-500 font-medium flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-red-400" /> Weakest Attribute:
+                  </span>
+                  <span className="font-bold text-white">{dnaWeakest}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="rounded border border-white/5 bg-white/3 p-2.5 text-[10px] text-zinc-500 leading-normal mt-4">
+              Tip: In your next session, prioritize explaining **{dnaWeakest}** parameters. For example, explain structural tradeoffs earlier in your replies.
+            </div>
+          </Card>
+        </div>
+
+        {/* Topic Mastery Map */}
+        <Card className="border-white/10 bg-zinc-950/70 p-5 shadow-2xl">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 mb-4 flex items-center gap-2">
+            <BarChart3 className="size-4 text-cyan-400" />
+            Topic Mastery Map
+          </h3>
+          <div className="space-y-4">
+            {session.masteryMap && Object.keys(session.masteryMap).length > 0 ? (
+              Object.keys(session.masteryMap).map(topic => {
+                const score = session.masteryMap![topic]
+                return (
+                  <div key={topic} className="flex flex-col sm:grid sm:grid-cols-[180px_1fr_45px] items-center gap-3">
+                    <span className="text-xs text-zinc-300 font-medium w-full sm:text-left">{topic}</span>
+                    <div className="h-2 rounded-full bg-white/5 w-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-cyan-400 to-emerald-400" style={{ width: `${score}%` }} />
+                    </div>
+                    <span className="text-xs font-bold text-cyan-200 text-right w-full sm:w-auto">{score}%</span>
+                  </div>
+                )
+              })
+            ) : (
+              <p className="text-xs text-zinc-500 text-center py-2">Mastery data will populate as logs are evaluated.</p>
+            )}
+          </div>
+        </Card>
+
+        {/* Historical Progression Map */}
+        <Card className="border-white/10 bg-zinc-950/70 p-5 shadow-2xl">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 mb-4 flex items-center gap-2">
+            <TrendingUp className="size-4 text-cyan-400" />
+            Interview Progress Tracker
+          </h3>
+          <div className="flex gap-4 items-end justify-between border-b border-white/10 pb-6 pt-4 min-h-[140px] px-4 overflow-x-auto">
+            {progression.map((p, i) => (
+              <div key={i} className="flex flex-col items-center gap-2 flex-1 max-w-[100px]">
+                <span className="text-[10px] text-zinc-500">{p.date}</span>
+                <div 
+                  className="w-8 bg-linear-to-t from-cyan-900 to-cyan-400 rounded-t-md transition-all duration-700 flex items-center justify-center text-[10px] text-black font-extrabold shadow-md"
+                  style={{ height: `${p.score * 1.2}px` }}
+                >
+                  {p.score}%
+                </div>
+                <span className="text-xs text-white font-semibold">Run #{p.index}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-zinc-500 mt-3 text-center leading-normal">
+            Chart plots candidate score changes chronologically over multiple interview sessions.
+          </p>
+        </Card>
 
         {/* Strengths & Gaps Section */}
         <div className="grid gap-6 md:grid-cols-2">
@@ -344,11 +521,11 @@ export default function FeedbackDashboard() {
           </Card>
         </div>
 
-        {/* Actionable Next Steps */}
+        {/* Actionable Next Steps & Retry portal */}
         <Card className="border-white/10 bg-zinc-950/70 p-5 shadow-2xl">
           <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 mb-4 flex items-center gap-2">
             <BookOpen className="size-4 text-cyan-400" />
-            Recommended Next Steps
+            Recommended Practice & Retry portal
           </h3>
           <ul className="space-y-3">
             {feedbackDetails.nextSteps.map((step, idx) => (
@@ -374,7 +551,9 @@ export default function FeedbackDashboard() {
           <div className="space-y-3">
             {session.logs.map((log: EvalLog, idx: number) => {
               const isExpanded = expandedIdx[idx] || false
-              const avgScore = Math.round((log.score.depth + log.score.clarity + log.score.communication) / 3)
+              const avgScore = Math.round(
+                (log.score.depth + log.score.accuracy + log.score.reasoning + log.score.consistency + log.score.adaptability) / 5
+              )
 
               return (
                 <Card 
@@ -392,6 +571,9 @@ export default function FeedbackDashboard() {
                     <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                       <span className="text-xs font-semibold border border-white/10 bg-white/3 text-zinc-400 px-2.5 py-0.5 rounded-full w-fit">
                         {log.topic} {log.isFollowUp && "(Follow-up)"}
+                      </span>
+                      <span className="text-xs font-normal border border-cyan-400/25 bg-cyan-400/5 text-cyan-300 px-2 py-0.5 rounded-full w-fit">
+                        {log.difficulty}
                       </span>
                       <span className="text-sm font-semibold text-white line-clamp-2 md:line-clamp-1 max-w-sm md:max-w-md whitespace-normal">
                         {log.question}
@@ -427,23 +609,27 @@ export default function FeedbackDashboard() {
                       <div className="space-y-1">
                         <p className="text-xs uppercase font-semibold text-white tracking-wider">Your Response</p>
                         <p className="text-sm text-zinc-300 leading-6 bg-white/3 border border-white/5 p-3 rounded-lg whitespace-pre-wrap italic">
-                          "{log.answer}"
+                          &ldquo;{log.answer}&rdquo;
                         </p>
                       </div>
 
                       {/* Specific Turn Scores */}
-                      <div className="grid gap-3 grid-cols-3 bg-zinc-950 p-3 rounded-lg border border-white/5 text-center">
+                      <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 bg-zinc-950 p-3 rounded-lg border border-white/5 text-center">
                         <div>
                           <p className="text-[10px] text-zinc-500 uppercase">Depth</p>
                           <p className="text-sm font-bold text-white mt-0.5">{log.score.depth}%</p>
                         </div>
-                        <div className="border-x border-white/10">
+                        <div className="border-l border-white/5 sm:border-x">
                           <p className="text-[10px] text-zinc-500 uppercase">Clarity</p>
                           <p className="text-sm font-bold text-white mt-0.5">{log.score.clarity}%</p>
                         </div>
-                        <div>
-                          <p className="text-[10px] text-zinc-500 uppercase">Communication</p>
-                          <p className="text-sm font-bold text-white mt-0.5">{log.score.communication}%</p>
+                        <div className="border-l border-white/5 sm:border-r">
+                          <p className="text-[10px] text-zinc-500 uppercase">Accuracy</p>
+                          <p className="text-sm font-bold text-white mt-0.5">{log.score.accuracy}%</p>
+                        </div>
+                        <div className="border-l border-white/5">
+                          <p className="text-[10px] text-zinc-500 uppercase">Consistency</p>
+                          <p className="text-sm font-bold text-white mt-0.5">{log.score.consistency}%</p>
                         </div>
                       </div>
 

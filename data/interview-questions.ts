@@ -93,13 +93,28 @@ const premiumQuestions: Record<number, Omit<Question, "id" | "day" | "topic">> =
   }
 }
 
+interface Mission {
+  day: number
+  title: string
+  passed?: boolean
+  skipped?: boolean
+  attempts?: number
+}
+
+interface DayMeta {
+  day: number
+  title: string
+  tools: string[];
+  objectives: string[];
+}
+
 // Function to generate/retrieve questions for any candidate dynamically
 export function getQuestionsForCandidate(candidateId: string): Question[] {
   // Load candidate
   const candidate = candidatesData.candidates.find((c) => c.member.id === candidateId) || candidatesData.candidates[0]
   
   // Find completed days (where passed = true)
-  const completedMissions = candidate.missions.filter((m: any) => m.passed)
+  const completedMissions = candidate.missions.filter((m: Mission) => m.passed)
   
   // Pick up to 5 completed days. To ensure we have variety, select them from different day ranges
   // If not enough days completed, fallback to any available completed days
@@ -108,7 +123,7 @@ export function getQuestionsForCandidate(candidateId: string): Question[] {
   // Target a diverse set of days if possible
   const preferredDays = [7, 8, 10, 12, 13, 16, 20, 22, 23, 28, 31]
   const completedPreferred = completedMissions
-    .map((m: any) => m.day)
+    .map((m: Mission) => m.day)
     .filter((day: number) => preferredDays.includes(day))
 
   // Populate from preferred completed days
@@ -117,7 +132,7 @@ export function getQuestionsForCandidate(candidateId: string): Question[] {
   })
 
   // If still under 5, fill from other completed days
-  completedMissions.forEach((m: any) => {
+  completedMissions.forEach((m: Mission) => {
     if (selectedDays.length < 5 && !selectedDays.includes(m.day)) {
       selectedDays.push(m.day)
     }
@@ -133,8 +148,8 @@ export function getQuestionsForCandidate(candidateId: string): Question[] {
   }
 
   // Map each selected day to a Question
-  const candidateQuestions: Question[] = selectedDays.map((dayNum, index) => {
-    const dayMeta = curriculumData.days.find((d: any) => d.day === dayNum) || curriculumData.days[0]
+  const candidateQuestions: Question[] = selectedDays.map((dayNum) => {
+    const dayMeta = (curriculumData.days as DayMeta[]).find((d) => d.day === dayNum) || (curriculumData.days as DayMeta[])[0]
     
     // Check if we have a premium handcrafted question
     if (premiumQuestions[dayNum]) {
