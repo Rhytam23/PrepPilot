@@ -97,13 +97,13 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { sessionId } = body
 
-    if (!sessionId) {
-      return NextResponse.json({ error: "Missing sessionId parameter" }, { status: 400 })
-    }
+  
 
     // 1. Initial request (Start Interview)
-    if (body.candidate) {
-      const { candidate } = body
+if (body.candidate) {
+  const newSessionId = crypto.randomUUID()
+
+  const { candidate } = body
       // Map candidate id
       const candidateId = candidate.id || "CAND-001"
       const candidateName = candidate.name || "Sarah Johnson"
@@ -124,15 +124,15 @@ export async function POST(request: Request) {
         metrics: { depth: 0, clarity: 0, communication: 0 }
       }
 
-      sessions.set(sessionId, newState)
-
+     sessions.set(newSessionId, newState)
       const initialQ = candidateQuestions[0]
       const welcomeMessage = `Welcome, ${candidateName}. I'm your AI Interviewer. Today, we'll evaluate your engineering experience across the curriculum. Let's start with a question on ${initialQ.topic}:\n\n${initialQ.question}`
 
-      return NextResponse.json({
-        reply: welcomeMessage,
-        done: false
-      })
+    return NextResponse.json({
+  reply: welcomeMessage,
+  done: false,
+  sessionId: newSessionId
+})
     }
 
     // 2. Conversation Turn
@@ -193,10 +193,11 @@ export async function POST(request: Request) {
       
       sessions.set(sessionId, sessionState)
 
-      return NextResponse.json({
-        reply: `Good point. Let's delve deeper into this: ${followUpQ}`,
-        done: false
-      })
+ return NextResponse.json({
+  reply: `Good point. Let's delve deeper into this: ${followUpQ}`,
+  done: false,
+  metrics: sessionState.metrics
+})
     } else {
       // Completed follow-up, advance idx or wrap up
       if (currentIdx < questions.length - 1) {
@@ -206,10 +207,11 @@ export async function POST(request: Request) {
         sessions.set(sessionId, sessionState)
         
         const nextQ = questions[currentIdx + 1]
-        return NextResponse.json({
-          reply: `Understood. Let's move on to the next focus topic, which is ${nextQ.topic}:\n\n${nextQ.question}`,
-          done: false
-        })
+      return NextResponse.json({
+  reply: `Understood. Let's move on to the next focus topic, which is ${nextQ.topic}:\n\n${nextQ.question}`,
+  done: false,
+  metrics: sessionState.metrics
+})
       } else {
         // All questions completed!
         const finalScore = Math.round((sessionState.metrics.depth + sessionState.metrics.clarity + sessionState.metrics.communication) / 3)

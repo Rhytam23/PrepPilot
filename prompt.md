@@ -1152,15 +1152,7 @@ export function SiteHeader() {
         </a>
       </nav>
 
-      <Link
-        href="/candidate"
-        className={cn(
-          buttonVariants({ size: "sm" }),
-          "border border-white/10 bg-white text-black hover:bg-zinc-200"
-        )}
-      >
-        Start Interview
-      </Link>
+     
     </header>
   )
 }
