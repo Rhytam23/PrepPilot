@@ -21,6 +21,7 @@ const difficultyStyles = {
 
 type CandidateCardProps = {
   candidate: Candidate
+  key?: any
 }
 
 export function CandidateCard({ candidate }: CandidateCardProps) {

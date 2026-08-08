@@ -266,7 +266,7 @@ export default function FeedbackDashboard() {
               <Award className="size-4 text-cyan-400" />
               Dimension Breakdown
             </h3>
-            <div className="space-y-6">
+            <div className="space-y-6 md:grid md:grid-cols-3 md:space-y-0 md:gap-6 lg:flex lg:flex-col lg:space-y-6">
               <div>
                 <div className="mb-2 flex items-center justify-between text-sm">
                   <span className="text-zinc-300 font-medium">Technical Depth</span>
@@ -393,7 +393,7 @@ export default function FeedbackDashboard() {
                       <span className="text-xs font-semibold border border-white/10 bg-white/3 text-zinc-400 px-2.5 py-0.5 rounded-full w-fit">
                         {log.topic} {log.isFollowUp && "(Follow-up)"}
                       </span>
-                      <span className="text-sm font-semibold text-white truncate max-w-sm md:max-w-md">
+                      <span className="text-sm font-semibold text-white line-clamp-2 md:line-clamp-1 max-w-sm md:max-w-md whitespace-normal">
                         {log.question}
                       </span>
                     </div>

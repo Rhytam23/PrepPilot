@@ -490,7 +490,7 @@ React.useEffect(() => {
           </div>
 
           {/* Performance Signals Dashboard (Right Hand Column) */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col md:grid md:grid-cols-2 lg:flex lg:flex-col gap-4">
             <Card className="border-white/10 bg-zinc-950/70 shadow-2xl">
               <CardHeader className="p-4 pb-2 border-b border-white/10">
                 <CardTitle className="text-xs uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
@@ -498,7 +498,7 @@ React.useEffect(() => {
                   Live Session Signals
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-4 flex flex-col gap-4">
+              <CardContent className="p-4 flex flex-col sm:grid sm:grid-cols-3 lg:flex lg:flex-col gap-4">
                 <div>
                   <div className="mb-2 flex items-center justify-between text-xs">
                     <span className="text-zinc-500">Depth</span>
